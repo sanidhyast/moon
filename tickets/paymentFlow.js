@@ -48,8 +48,8 @@ Dana - 085283960141 AN Yani M.
 **FEE QRIS**
 💵 0 - 500.000 = Rp.500
 💵 500.001 - 1.000.000 = Rp.2000
-💵 1.000.001 - 5.000.000 = Rp.5000
-💵 5.000.001 - seterusnya = Rp.10.000
+💵 1.000.001 - 5.000.000 = 5% dari transaksi
+💵 5.000.001 - seterusnya = 7% dari transaksi
 
 **FEE QRIS WAJIB DI BAYAR**`
     );
