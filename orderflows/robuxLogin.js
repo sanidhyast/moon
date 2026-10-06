@@ -1,3 +1,4 @@
+const path = require('path');
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -46,13 +47,16 @@ async function replaceStep(interaction, data) {
 
 async function showPriceList(interaction) {
 
+  await interaction.deferReply({ flags: 64 });
+
   const disabled = await getDisabledItems('robuxLogin','packages');
 
   const available = items.robuxLoginPackages.filter(
     p => !disabled.includes(p.value)
   );
 
-  const banner = new AttachmentBuilder('./pricing.png');
+  const bannerPath = path.join(__dirname, '..', 'pricing.png');
+  const banner = new AttachmentBuilder(bannerPath, { name: 'pricing.png' });
 
   const embed = new EmbedBuilder()
     .setTitle('🧳 Robux Via Login – Price List')
@@ -76,8 +80,6 @@ async function showPriceList(interaction) {
       .setStyle(ButtonStyle.Primary)
       .setEmoji('🛒')
   );
-
-  await interaction.deferReply({ flags: 64 });
 
   await interaction.editReply({
     embeds: [embed],

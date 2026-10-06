@@ -1,3 +1,4 @@
+const path = require('path');
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -45,9 +46,12 @@ async function loadPackages() {
 /* ───────────────────────────────────── */
 
 async function showPriceList(interaction) {
+  await interaction.deferReply({ flags: 64 });
+
   const available = await loadPackages();
 
-  const banner = new AttachmentBuilder('./pricing.png');
+  const bannerPath = path.join(__dirname, '..', 'pricing.png');
+  const banner = new AttachmentBuilder(bannerPath, { name: 'pricing.png' });
 
   const embed = new EmbedBuilder()
     .setTitle('🎮 Robux Via Username – Price List')
@@ -76,12 +80,11 @@ async function showPriceList(interaction) {
       .setEmoji('🛒')
   );
 
-await interaction.reply({
-  embeds: [embed],
-  components: [row],
-  files: [banner],
-  ephemeral: true
-});
+  await interaction.editReply({
+    embeds: [embed],
+    components: [row],
+    files: [banner],
+  });
 }
 
 /* ───────────────────────────────────── */

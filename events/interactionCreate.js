@@ -269,7 +269,11 @@ if (interaction.commandName === 'delete' || interaction.commandName === 'insert'
 
     if (interaction.isModalSubmit()) {
       if (interaction.customId === 'close_ticket_modal') {
-        return handleCloseModal(interaction);
+        try {
+          return await handleCloseModal(interaction);
+        } catch (err) {
+          console.error('[Modal Submit Error] close_ticket_modal:', err);
+        }
       }
     }
 

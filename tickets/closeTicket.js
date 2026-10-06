@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const {
   PermissionFlagsBits,
   EmbedBuilder,
@@ -16,10 +18,9 @@ const { closeTicketRecord } = require('../database/supabase');
  * STEP 1: Button Click → Show Modal
  */
 async function handleClose(interaction) {
-
   const guild = interaction.guild;
 
-  const member = await guild.members.fetch(interaction.user.id);
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
 
   const allowedRoles = [
     config.adminRoleId,
@@ -33,14 +34,15 @@ async function handleClose(interaction) {
     config.resellerRoleId,
   ].filter(Boolean);
 
-  const isStaff = member.roles.cache.some(role =>
+  const isStaff = member?.roles?.cache?.some(role =>
     allowedRoles.includes(role.id)
-  );
+  ) || interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)
+    || guild?.ownerId === interaction.user.id;
 
   if (!isStaff) {
     return interaction.reply({
       content: '❌ Only staff members can close tickets.',
-      ephemeral: true,
+      flags: 64,
     });
   }
 
@@ -66,16 +68,15 @@ async function handleClose(interaction) {
  * STEP 2: Modal Submit → Close Ticket
  */
 async function handleCloseModal(interaction) {
-
   if (interaction.customId !== 'close_ticket_modal') return;
 
   const channel = interaction.channel;
   const guild = interaction.guild;
 
   const reason = interaction.fields.getTextInputValue('close_reason');
-    // ── Get Open Time ─────────────────────────
-  let openedAt = 'Unknown';
 
+  // ── Get Open Time ─────────────────────────
+  let openedAt = 'Unknown';
   try {
     const data = JSON.parse(channel.topic);
     if (data.openedAt) {
@@ -87,14 +88,8 @@ async function handleCloseModal(interaction) {
 
   await interaction.reply({
     content: '🔒 Closing ticket and generating transcript...',
-    ephemeral: true,
-  });
-
-  const member = await guild.members.fetch(interaction.user.id);
-
-  // ── Count Messages ─────────────────────────
-  let adminCount = 0;
-  let userCount = 0;
+    flags: 64,
+  }).catch(() => {});
 
   const allowedRoles = [
     config.adminRoleId,
@@ -108,32 +103,47 @@ async function handleCloseModal(interaction) {
     config.resellerRoleId,
   ].filter(Boolean);
 
-  let lastId;
+  // ── Count Messages ─────────────────────────
+  let adminCount = 0;
+  let userCount = 0;
 
-  while (true) {
-    const messages = await channel.messages.fetch({
-      limit: 100,
-      before: lastId,
-    });
+  try {
+    let lastId;
+    let pageCount = 0;
 
-    if (messages.size === 0) break;
+    while (pageCount < 20) {
+      pageCount++;
+      const messages = await channel.messages.fetch({
+        limit: 100,
+        before: lastId,
+      }).catch(err => {
+        console.error('[Transcript Message Fetch Error]', err.message || err);
+        return null;
+      });
 
-    for (const msg of messages.values()) {
-      if (!msg.member) continue;
+      if (!messages || messages.size === 0) break;
 
-      const isAdmin = msg.member.roles.cache.some(role =>
-        allowedRoles.includes(role.id)
-      );
+      for (const msg of messages.values()) {
+        if (msg.author?.bot) continue;
 
-      if (isAdmin) adminCount++;
-      else userCount++;
+        const targetMember = msg.member || guild.members.cache.get(msg.author.id);
+        const isAdmin = targetMember
+          ? allowedRoles.some(r => targetMember.roles?.cache?.has(r))
+          : false;
+
+        if (isAdmin) adminCount++;
+        else userCount++;
+      }
+
+      lastId = messages.last().id;
+      if (messages.size < 100) break;
     }
-
-    lastId = messages.last().id;
+  } catch (countErr) {
+    console.error('[Message Counting Error]', countErr);
   }
-  // ── Generate transcript ─────────────────────────
-  let transcriptAttachment;
 
+  // ── Generate transcript ─────────────────────────
+  let transcriptAttachment = null;
   try {
     transcriptAttachment = await createTranscript(channel, {
       limit: -1,
@@ -148,64 +158,88 @@ async function handleCloseModal(interaction) {
   }
 
   // ── Send transcript to ADMIN log channel ───────────────
-  const logChannel = guild.channels.cache.get(config.transcriptLogChannelId);
-
-  if (logChannel) {
+  if (!config.transcriptLogChannelId) {
+    console.warn('[Transcript Log] TRANSCRIPT_LOG_CHANNEL_ID is not configured in .env');
+  } else {
     try {
-      const logEmbed = new EmbedBuilder()
-        .setTitle('📁 Ticket Transcript')
-        .setColor(0xED4245)
-        .addFields(
-          { name: 'Ticket', value: channel.name, inline: true },
-          { name: 'Closed by', value: interaction.user.tag, inline: true },
-          { name: 'Reason', value: reason || 'No reason provided' },
-          { name: '📅 Opened At', value: openedAt },
-          { name: '📅 Closed At', value: closedAt },
-          { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
-          { name: '👤 User Messages', value: `${userCount}`, inline: true },
-        )
-        .setTimestamp();
+      const logChannel = guild.channels.cache.get(config.transcriptLogChannelId)
+        || await guild.channels.fetch(config.transcriptLogChannelId).catch(err => {
+             console.error(`[Transcript Log] Failed to fetch admin log channel (${config.transcriptLogChannelId}):`, err.message || err);
+             return null;
+           });
 
-      await logChannel.send({
-        embeds: [logEmbed],
-        files: transcriptAttachment ? [transcriptAttachment] : [],
-      });
+      if (!logChannel) {
+        console.error(`[Transcript Log] Admin log channel (${config.transcriptLogChannelId}) not found in guild.`);
+      } else {
+        const logEmbed = new EmbedBuilder()
+          .setTitle('📁 Ticket Transcript')
+          .setColor(0xED4245)
+          .addFields(
+            { name: 'Ticket', value: channel.name, inline: true },
+            { name: 'Closed by', value: interaction.user.tag, inline: true },
+            { name: 'Reason', value: reason || 'No reason provided' },
+            { name: '📅 Opened At', value: openedAt },
+            { name: '📅 Closed At', value: closedAt },
+            { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
+            { name: '👤 User Messages', value: `${userCount}`, inline: true },
+          )
+          .setTimestamp();
 
-      // ── Send to PUBLIC transcript channel (NO HTML) ───────────────
-      const publicChannel = guild.channels.cache.get(config.publicTranscriptChannelId);
-
-      if (publicChannel) {
-        try {
-
-          const publicEmbed = new EmbedBuilder()
-            .setTitle('📁 Ticket Transcript')
-            .setColor(0xFEE75C)
-            .setThumbnail('attachment://logo.png') // ✅ correct
-            .addFields(
-              { name: 'Ticket', value: channel.name, inline: true },
-              { name: 'Closed by', value: interaction.user.tag, inline: true },
-              { name: 'Reason', value: reason || 'No reason provided' },
-              { name: '📅 Opened At', value: openedAt },
-              { name: '📅 Closed At', value: closedAt },
-              { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
-              { name: '👤 User Messages', value: `${userCount}`, inline: true },
-            )
-            .setTimestamp();
-
-          await publicChannel.send({
-            embeds: [publicEmbed],
-            files: [
-              new AttachmentBuilder('./logo.png') // ✅ REQUIRED
-            ]
-          });
-
-        } catch (err) {
-          console.error('[Public Transcript Error]', err);
-        }
+        await logChannel.send({
+          embeds: [logEmbed],
+          files: transcriptAttachment ? [transcriptAttachment] : [],
+        });
+        console.log(`[Transcript Log] Successfully sent ticket transcript for #${channel.name} to admin channel.`);
       }
-
     } catch (err) {
       console.error('[Transcript Log Error]', err);
+    }
+  }
+
+  // ── Send to PUBLIC transcript channel (Embed only) ───────────────
+  if (!config.publicTranscriptChannelId) {
+    console.warn('[Public Transcript] PUBLIC_TRANSCRIPT_CHANNEL_ID is not configured in .env');
+  } else {
+    try {
+      const publicChannel = guild.channels.cache.get(config.publicTranscriptChannelId)
+        || await guild.channels.fetch(config.publicTranscriptChannelId).catch(err => {
+             console.error(`[Public Transcript] Failed to fetch public channel (${config.publicTranscriptChannelId}):`, err.message || err);
+             return null;
+           });
+
+      if (!publicChannel) {
+        console.error(`[Public Transcript] Public transcript channel (${config.publicTranscriptChannelId}) not found in guild.`);
+      } else {
+        const logoPath = path.join(__dirname, '..', 'logo.png');
+        const hasLogo = fs.existsSync(logoPath);
+        const publicFiles = hasLogo ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
+
+        const publicEmbed = new EmbedBuilder()
+          .setTitle('📁 Ticket Transcript')
+          .setColor(0xFEE75C)
+          .addFields(
+            { name: 'Ticket', value: channel.name, inline: true },
+            { name: 'Closed by', value: interaction.user.tag, inline: true },
+            { name: 'Reason', value: reason || 'No reason provided' },
+            { name: '📅 Opened At', value: openedAt },
+            { name: '📅 Closed At', value: closedAt },
+            { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
+            { name: '👤 User Messages', value: `${userCount}`, inline: true },
+          )
+          .setTimestamp();
+
+        if (hasLogo) {
+          publicEmbed.setThumbnail('attachment://logo.png');
+        }
+
+        await publicChannel.send({
+          embeds: [publicEmbed],
+          files: publicFiles,
+        });
+        console.log(`[Public Transcript] Successfully sent ticket transcript embed for #${channel.name} to public channel.`);
+      }
+    } catch (err) {
+      console.error('[Public Transcript Error]', err);
     }
   }
 
@@ -217,36 +251,42 @@ async function handleCloseModal(interaction) {
   }
 
   // ── Lock customer access ─────────────────────────
-  for (const [id, overwrite] of channel.permissionOverwrites.cache) {
+  try {
+    for (const [id, overwrite] of channel.permissionOverwrites.cache) {
+      const target = await guild.members.fetch(id).catch(() => null);
+      if (!target) continue;
 
-    const target = await guild.members.fetch(id).catch(() => null);
-    if (!target) continue;
+      const isStaffOrAdmin = allowedRoles.some(roleId => target.roles.cache.has(roleId))
+        || target.permissions.has(PermissionFlagsBits.Administrator);
 
-    const isAdmin = allowedRoles.some(roleId =>
-      target.roles.cache.has(roleId)
-    );
-
-    if (
-      overwrite.allow.has(PermissionFlagsBits.ViewChannel) &&
-      !isAdmin
-    ) {
-      await channel.permissionOverwrites.edit(id, {
-        SendMessages: false,
-        ViewChannel: false,
-      }).catch(() => {});
+      if (
+        overwrite.allow.has(PermissionFlagsBits.ViewChannel) &&
+        !isStaffOrAdmin
+      ) {
+        await channel.permissionOverwrites.edit(id, {
+          SendMessages: false,
+          ViewChannel: false,
+        }).catch(() => {});
+      }
     }
+  } catch (err) {
+    console.error('[Lock Customer Access Error]', err);
   }
 
   // ── Closed embed ─────────────────────────────────
-  const closedEmbed = new EmbedBuilder()
-    .setTitle('🔒 Ticket Closed')
-    .setColor(0xED4245)
-    .setDescription(
-      `This ticket was closed by **${interaction.user.tag}**.\nReason: **${reason}**\n\nDeleting channel in **5 seconds**...`
-    )
-    .setTimestamp();
+  try {
+    const closedEmbed = new EmbedBuilder()
+      .setTitle('🔒 Ticket Closed')
+      .setColor(0xED4245)
+      .setDescription(
+        `This ticket was closed by **${interaction.user.tag}**.\nReason: **${reason}**\n\nDeleting channel in **5 seconds**...`
+      )
+      .setTimestamp();
 
-  await channel.send({ embeds: [closedEmbed] });
+    await channel.send({ embeds: [closedEmbed] });
+  } catch (err) {
+    console.error('[Closed Embed Error]', err);
+  }
 
   // ── Delete channel ───────────────────────────────
   setTimeout(async () => {
