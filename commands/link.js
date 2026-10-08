@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const { getDisabledButtons, getRemovedButtons } = require('../database/supabase');
 const {
   SlashCommandBuilder,
@@ -15,21 +17,30 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    if (!interaction.member.permissions.has('Administrator')) {
-      return interaction.reply({
+    await interaction.deferReply({ flags: 64 });
+
+    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator)
+      || interaction.guild?.ownerId === interaction.user.id;
+
+    if (!isAdmin) {
+      return interaction.editReply({
         content: '❌ You are not allowed to use this command.',
-        ephemeral: true,
       });
     }
 
-    const disabled = await getDisabledButtons();
-    const removed = await getRemovedButtons();
-    const banner = new AttachmentBuilder('./pricing.png');
+    const [disabled, removed] = await Promise.all([
+      getDisabledButtons(),
+      getRemovedButtons(),
+    ]);
+
+    const bannerPath = path.join(__dirname, '..', 'pricing.png');
+    const files = fs.existsSync(bannerPath)
+      ? [new AttachmentBuilder(bannerPath, { name: 'pricing.png' })]
+      : [];
 
     const purchaseEmbed = new EmbedBuilder()
       .setTitle('🛒 MoonBlox Pricelist')
       .setColor(0x2ecc71)
-      .setImage('attachment://pricing.png')
       .setDescription(`
 Di sini kamu dapat melihat berbagai layanan yang tersedia di Moonblox beserta pricelist lengkapnya.
 
@@ -43,10 +54,14 @@ Setelah menemukan produk yang kamu butuhkan, kamu bisa langsung membuka ticket s
 `)
       .setFooter({ text: 'MoonBlox Store' });
 
+    if (files.length > 0) {
+      purchaseEmbed.setImage('attachment://pricing.png');
+    }
+
     const msg = await interaction.channel.send({
       embeds: [purchaseEmbed],
       components: buildPanelRows(disabled, removed),
-      files: [banner],
+      files: files,
     });
 
     global.panelData = {
@@ -54,9 +69,8 @@ Setelah menemukan produk yang kamu butuhkan, kamu bisa langsung membuka ticket s
       messageId: msg.id,
     };
 
-    await interaction.reply({
+    await interaction.editReply({
       content: '✅ Purchase panel deployed!',
-      ephemeral: true,
     });
   },
 };

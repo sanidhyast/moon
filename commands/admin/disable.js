@@ -42,6 +42,16 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    await interaction.deferReply({ flags: 64 });
+
+    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator)
+      || interaction.guild?.ownerId === interaction.user.id;
+
+    if (!isAdmin) {
+      return interaction.editReply({
+        content: '❌ You are not allowed to use this command.',
+      });
+    }
 
     const game = interaction.options.getString('game');
     const category = interaction.options.getString('category');
@@ -49,9 +59,8 @@ module.exports = {
 
     await disableItem(game, category, item);
 
-    await interaction.reply({
+    await interaction.editReply({
       content: `❌ Disabled **${item}**`,
-      ephemeral: true
     });
   }
 };

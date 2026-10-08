@@ -251,13 +251,15 @@ if (interaction.commandName === 'delete' || interaction.commandName === 'insert'
 
         const msg = {
           content: '❌ An error occurred executing that command.',
-          ephemeral: true
+          flags: 64
         };
 
-        if (interaction.replied || interaction.deferred)
-          await interaction.followUp(msg);
-        else
-          await interaction.reply(msg);
+        try {
+          if (interaction.replied || interaction.deferred)
+            await interaction.followUp(msg);
+          else
+            await interaction.reply(msg);
+        } catch (_) {}
       }
 
       return;
