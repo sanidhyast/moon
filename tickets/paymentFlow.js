@@ -10,6 +10,7 @@ const {
 } = require('discord.js');
 
 const { createTranscript } = require('discord-html-transcripts');
+const { buildRatingRow } = require('./testimonialFlow');
 const config = require('../config');
 
 function getTicketMeta(channel) {
@@ -294,8 +295,8 @@ async function handleOrderDone(interaction) {
             (ticketMeta.orderType ? `📦 **Layanan:** ${ticketMeta.orderType}\n` : '') +
             (orderSummary ? `\n**🛍️ Ringkasan Pesanan:**\n${orderSummary}\n` : '') +
             `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
-            `⭐ **Dukung Kami dengan Testimoni:**\n` +
-            `Apabila kamu merasa puas dengan pelayanan kami, mohon dukung kami dengan mengisi testimoni di <#${testimonialChannelId}> dan memberi rating **5⭐**!\n\n` +
+            `⭐ **Beri Rating & Testimoni:**\n` +
+            `Pilih bintang di bawah untuk menilai pelayanan kami. Khusus rating **5⭐**, testimonimu akan otomatis diposting ke <#${testimonialChannelId}>!\n\n` +
             `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`
           )
           .setFooter({ text: 'MoonBlox • Terimakasih telah berbelanja!' })
@@ -306,6 +307,7 @@ async function handleOrderDone(interaction) {
         await customer.send({
           embeds: [dmEmbed],
           files: dmFiles,
+          components: [buildRatingRow()],
         }).then(() => {
           console.log(`[Customer DM] Order completed message sent to ${customer.tag} (${customer.id})`);
         }).catch(err => {

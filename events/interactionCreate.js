@@ -31,6 +31,10 @@ const {
   handlePaymentVerify,
   handleOrderDone
 } = require('../tickets/paymentFlow');
+const {
+  handleRatingButton,
+  handleTestimonialModal,
+} = require('../tickets/testimonialFlow');
 
 const FLOW_HANDLERS = {
   rl_:  robuxLogin.handleInteraction,
@@ -277,6 +281,14 @@ if (interaction.commandName === 'delete' || interaction.commandName === 'insert'
           console.error('[Modal Submit Error] close_ticket_modal:', err);
         }
       }
+
+      if (interaction.customId === 'modal_rate_5') {
+        try {
+          return await handleTestimonialModal(interaction, client);
+        } catch (err) {
+          console.error('[Modal Submit Error] modal_rate_5:', err);
+        }
+      }
     }
 
     const id = interaction.customId;
@@ -286,6 +298,14 @@ if (interaction.commandName === 'delete' || interaction.commandName === 'insert'
     ───────────────────────────── */
 
     if (interaction.isButton()) {
+      if (interaction.customId.startsWith('rate_star_')) {
+        try {
+          return await handleRatingButton(interaction);
+        } catch (err) {
+          console.error('[Rating Button Error]', err);
+        }
+        return;
+      }
 
            const PANEL_HANDLERS = {
         robux_login:         () => robuxLogin.showPriceList(interaction),
