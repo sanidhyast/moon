@@ -149,7 +149,7 @@ async function handleCloseModal(interaction) {
     transcriptAttachment = await createTranscript(channel, {
       limit: -1,
       returnType: 'attachment',
-      filename: `transcript-${channel.name}.html`,
+      filename: `SPOILER_transcript-${channel.name}.html`,
       saveImages: false,
       poweredBy: false,
     });
@@ -193,6 +193,11 @@ async function handleCloseModal(interaction) {
         });
         if (logMsg && logMsg.attachments?.size > 0) {
           transcriptUrl = logMsg.attachments.first()?.url || null;
+          if (transcriptUrl) {
+            await logMsg.edit({
+              components: [buildTranscriptRow(transcriptUrl)],
+            }).catch(() => {});
+          }
         }
         console.log(`[Transcript Log] Successfully sent ticket transcript for #${channel.name} to admin channel.`);
       }

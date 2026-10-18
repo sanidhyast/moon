@@ -263,7 +263,7 @@ async function handleOrderDone(interaction) {
           transcriptAttachment = await createTranscript(interaction.channel, {
             limit: -1,
             returnType: 'attachment',
-            filename: `transcript-${interaction.channel.name}.html`,
+            filename: `SPOILER_transcript-${interaction.channel.name}.html`,
             saveImages: false,
             poweredBy: false,
           });
@@ -279,12 +279,27 @@ async function handleOrderDone(interaction) {
             const logChannel = guild?.channels?.cache?.get(config.transcriptLogChannelId)
               || await guild?.channels?.fetch(config.transcriptLogChannelId).catch(() => null);
             if (logChannel) {
+              const doneLogEmbed = new EmbedBuilder()
+                .setTitle('📦 Order Done Transcript')
+                .setColor(0x57F287)
+                .addFields(
+                  { name: 'Ticket', value: interaction.channel.name, inline: true },
+                  { name: 'Customer', value: `<@${customer.id}> (${customer.tag})`, inline: true },
+                  { name: 'Staff', value: interaction.user.tag, inline: true },
+                )
+                .setTimestamp();
+
               const logMsg = await logChannel.send({
-                content: `📁 **Order Done Transcript** for #${interaction.channel.name} (<@${customer.id}>):`,
+                embeds: [doneLogEmbed],
                 files: [transcriptAttachment],
               });
               if (logMsg && logMsg.attachments?.size > 0) {
                 transcriptUrl = logMsg.attachments.first()?.url || null;
+                if (transcriptUrl) {
+                  await logMsg.edit({
+                    components: [buildTranscriptRow(transcriptUrl)],
+                  }).catch(() => {});
+                }
               }
             }
           } catch (logErr) {
