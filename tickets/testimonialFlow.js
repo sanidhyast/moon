@@ -103,12 +103,6 @@ async function handleTestimonialModal(interaction, client) {
 
   if (targetChannel) {
     try {
-      const reviewPath = path.resolve(__dirname, '..', 'review.jpg');
-      const files = [];
-      if (fs.existsSync(reviewPath)) {
-        files.push(new AttachmentBuilder(reviewPath, { name: 'review.jpg' }));
-      }
-
       const embed = new EmbedBuilder()
         .setTitle('✨ TESTIMONI PELANGGAN MOONBLOX ✨')
         .setColor(0xFEE75C)
@@ -121,14 +115,9 @@ async function handleTestimonialModal(interaction, client) {
         .setFooter({ text: 'MoonBlox Verified Customer • Terimakasih atas testimoninya! 🌙✨' })
         .setTimestamp();
 
-      if (files.length > 0) {
-        embed.setImage('attachment://review.jpg');
-      }
-
       await targetChannel.send({
         content: `🎉 Testimoni baru dari <@${interaction.user.id}>! ⭐⭐⭐⭐⭐`,
         embeds: [embed],
-        files: files,
       });
 
       console.log(`[Testimonial] Successfully posted 5-star review from ${interaction.user.tag} to #${targetChannel.name || testimonialChannelId}`);
