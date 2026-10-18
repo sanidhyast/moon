@@ -11,7 +11,7 @@ const {
 } = require('discord.js');
 
 const { createTranscript } = require('discord-html-transcripts');
-const { buildRatingRow } = require('./testimonialFlow');
+const { buildRatingRow, buildTranscriptRow } = require('./testimonialFlow');
 const config = require('../config');
 const { closeTicketRecord } = require('../database/supabase');
 
@@ -159,6 +159,7 @@ async function handleCloseModal(interaction) {
   }
 
   // ── Send transcript to ADMIN log channel ───────────────
+  let transcriptUrl = null;
   if (!config.transcriptLogChannelId) {
     console.warn('[Transcript Log] TRANSCRIPT_LOG_CHANNEL_ID is not configured in .env');
   } else {
@@ -186,10 +187,13 @@ async function handleCloseModal(interaction) {
           )
           .setTimestamp();
 
-        await logChannel.send({
+        const logMsg = await logChannel.send({
           embeds: [logEmbed],
           files: transcriptAttachment ? [transcriptAttachment] : [],
         });
+        if (logMsg && logMsg.attachments?.size > 0) {
+          transcriptUrl = logMsg.attachments.first()?.url || null;
+        }
         console.log(`[Transcript Log] Successfully sent ticket transcript for #${channel.name} to admin channel.`);
       }
     } catch (err) {
@@ -233,9 +237,15 @@ async function handleCloseModal(interaction) {
           publicEmbed.setThumbnail('attachment://logo.png');
         }
 
+        const publicComponents = [];
+        if (transcriptUrl) {
+          publicComponents.push(buildTranscriptRow(transcriptUrl));
+        }
+
         await publicChannel.send({
           embeds: [publicEmbed],
           files: publicFiles,
+          components: publicComponents,
         });
         console.log(`[Public Transcript] Successfully sent ticket transcript embed for #${channel.name} to public channel.`);
       }
@@ -266,6 +276,15 @@ async function handleCloseModal(interaction) {
           } catch {}
         }
 
+        const dmComponents = [buildRatingRow()];
+        if (transcriptUrl) {
+          dmComponents.push(buildTranscriptRow(transcriptUrl));
+        }
+
+        const transcriptNote = transcriptUrl
+          ? `*Klik tombol **View Transcript** di bawah sebagai bukti percakapan tiket.*`
+          : `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`;
+
         const dmEmbed = new EmbedBuilder()
           .setTitle('✨ Pesanan Selesai - MoonBlox ✨')
           .setColor(0x57F287)
@@ -276,17 +295,18 @@ async function handleCloseModal(interaction) {
             `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
             `⭐ **Beri Rating & Testimoni:**\n` +
             `Pilih bintang di bawah untuk menilai pelayanan kami. Khusus rating **5⭐**, testimonimu akan otomatis diposting ke <#${testimonialChannelId}>!\n\n` +
-            `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`
+            transcriptNote
           )
           .setFooter({ text: 'MoonBlox • Terimakasih telah berbelanja!' })
           .setTimestamp();
 
-        const dmFiles = transcriptAttachment ? [transcriptAttachment] : [];
+        // If transcriptUrl is available, omit file attachment to avoid the raw HTML code preview box in DM
+        const dmFiles = transcriptUrl ? [] : (transcriptAttachment ? [transcriptAttachment] : []);
 
         await customer.send({
           embeds: [dmEmbed],
           files: dmFiles,
-          components: [buildRatingRow()],
+          components: dmComponents,
         }).then(() => {
           console.log(`[Customer DM] Order completed message sent to ${customer.tag} (${customer.id})`);
         }).catch(err => {

@@ -42,6 +42,19 @@ function buildRatingRow() {
 }
 
 /**
+ * Builds the View Transcript link button row
+ */
+function buildTranscriptRow(url) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel('View Transcript')
+      .setStyle(ButtonStyle.Link)
+      .setURL(url)
+      .setEmoji('📄')
+  );
+}
+
+/**
  * Handles rating button clicks in customer DMs
  */
 async function handleRatingButton(interaction) {
@@ -71,12 +84,19 @@ async function handleRatingButton(interaction) {
     flags: 64,
   }).catch(() => {});
 
-  // Disable buttons after rating
+  // Disable rating buttons after rating, keeping link buttons active
   if (interaction.message && interaction.message.components?.length > 0) {
     try {
-      const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
-      disabledRow.components.forEach(c => c.setDisabled(true));
-      await interaction.message.edit({ components: [disabledRow] }).catch(() => {});
+      const updatedRows = interaction.message.components.map(row => {
+        const actionRow = ActionRowBuilder.from(row);
+        actionRow.components.forEach(c => {
+          if (c.data.style !== ButtonStyle.Link) {
+            c.setDisabled(true);
+          }
+        });
+        return actionRow;
+      });
+      await interaction.message.edit({ components: updatedRows }).catch(() => {});
     } catch {}
   }
 }
@@ -134,18 +154,26 @@ async function handleTestimonialModal(interaction, client) {
     flags: 64,
   }).catch(() => {});
 
-  // Disable buttons on the original DM message
+  // Disable rating buttons on the original DM message, keeping link buttons active
   if (interaction.message && interaction.message.components?.length > 0) {
     try {
-      const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
-      disabledRow.components.forEach(c => c.setDisabled(true));
-      await interaction.message.edit({ components: [disabledRow] }).catch(() => {});
+      const updatedRows = interaction.message.components.map(row => {
+        const actionRow = ActionRowBuilder.from(row);
+        actionRow.components.forEach(c => {
+          if (c.data.style !== ButtonStyle.Link) {
+            c.setDisabled(true);
+          }
+        });
+        return actionRow;
+      });
+      await interaction.message.edit({ components: updatedRows }).catch(() => {});
     } catch {}
   }
 }
 
 module.exports = {
   buildRatingRow,
+  buildTranscriptRow,
   handleRatingButton,
   handleTestimonialModal,
 };
