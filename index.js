@@ -42,10 +42,21 @@ for (const file of fs.readdirSync(eventsDir).filter(f => f.endsWith('.js'))) {
 }
 
 // ── Ready event ───────────────────────────────────────────
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`\n✅ MoonBlox Bot is online as ${client.user.tag}`);
   console.log(`   Serving ${client.guilds.cache.size} guild(s)\n`);
   client.user.setActivity('📦 MOONBLOX ORDERS', { type: 3 }); // WATCHING
+
+  const newDescription = `✨Ready Gift Gamepass Rate 95 • Rbx Vilog Rate 75• Rbx Payout Rate 130 • Limited Items • Diamond Heartopia\n💫 Open ticket at Moonblox • Fast & Trusted even Marc Márquez  cant even balance🏍️`;
+
+  try {
+    await client.application.edit({
+      description: newDescription,
+    });
+    console.log('[Bot Description] Successfully updated bot application description!');
+  } catch (err) {
+    console.error('[Bot Description] Failed to update application description:', err.message || err);
+  }
 });
 
 // ── Global error handling ─────────────────────────────────
