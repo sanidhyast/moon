@@ -10,7 +10,7 @@ const {
 } = require('discord.js');
 
 const { createTranscript } = require('discord-html-transcripts');
-const { buildRatingRow } = require('./testimonialFlow');
+const { buildRatingRow, buildTranscriptRow } = require('./testimonialFlow');
 const config = require('../config');
 
 function getTicketMeta(channel) {
@@ -271,6 +271,27 @@ async function handleOrderDone(interaction) {
           console.error('[handleOrderDone Transcript Error]', transErr);
         }
 
+        // Upload transcript to log channel to obtain CDN URL for the View Transcript button
+        let transcriptUrl = null;
+        if (config.transcriptLogChannelId && transcriptAttachment) {
+          try {
+            const guild = interaction.guild;
+            const logChannel = guild?.channels?.cache?.get(config.transcriptLogChannelId)
+              || await guild?.channels?.fetch(config.transcriptLogChannelId).catch(() => null);
+            if (logChannel) {
+              const logMsg = await logChannel.send({
+                content: `📁 **Order Done Transcript** for #${interaction.channel.name} (<@${customer.id}>):`,
+                files: [transcriptAttachment],
+              });
+              if (logMsg && logMsg.attachments?.size > 0) {
+                transcriptUrl = logMsg.attachments.first()?.url || null;
+              }
+            }
+          } catch (logErr) {
+            console.error('[handleOrderDone Log Error]', logErr);
+          }
+        }
+
         // Extract order summary
         let orderSummary = ticketMeta.summary || '';
         if (!orderSummary) {
@@ -287,6 +308,15 @@ async function handleOrderDone(interaction) {
           } catch {}
         }
 
+        const dmComponents = [buildRatingRow()];
+        if (transcriptUrl) {
+          dmComponents.push(buildTranscriptRow(transcriptUrl));
+        }
+
+        const transcriptNote = transcriptUrl
+          ? `*Klik tombol **View Transcript** di bawah sebagai bukti percakapan tiket.*`
+          : `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`;
+
         const dmEmbed = new EmbedBuilder()
           .setTitle('✨ Pesanan Selesai - MoonBlox ✨')
           .setColor(0x57F287)
@@ -297,17 +327,18 @@ async function handleOrderDone(interaction) {
             `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
             `⭐ **Beri Rating & Testimoni:**\n` +
             `Pilih bintang di bawah untuk menilai pelayanan kami. Khusus rating **5⭐**, testimonimu akan otomatis diposting ke <#${testimonialChannelId}>!\n\n` +
-            `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`
+            transcriptNote
           )
           .setFooter({ text: 'MoonBlox • Terimakasih telah berbelanja!' })
           .setTimestamp();
 
-        const dmFiles = transcriptAttachment ? [transcriptAttachment] : [];
+        // If transcriptUrl is available, omit file attachment to avoid the raw HTML code preview box in DM
+        const dmFiles = transcriptUrl ? [] : (transcriptAttachment ? [transcriptAttachment] : []);
 
         await customer.send({
           embeds: [dmEmbed],
           files: dmFiles,
-          components: [buildRatingRow()],
+          components: dmComponents,
         }).then(() => {
           console.log(`[Customer DM] Order completed message sent to ${customer.tag} (${customer.id})`);
         }).catch(err => {
