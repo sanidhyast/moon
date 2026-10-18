@@ -256,15 +256,9 @@ async function handleCloseModal(interaction) {
           publicEmbed.setThumbnail('attachment://logo.png');
         }
 
-        const publicComponents = [];
-        if (transcriptUrl) {
-          publicComponents.push(buildTranscriptRow(transcriptUrl));
-        }
-
         await publicChannel.send({
           embeds: [publicEmbed],
           files: publicFiles,
-          components: publicComponents,
         });
         console.log(`[Public Transcript] Successfully sent ticket transcript embed for #${channel.name} to public channel.`);
       }
