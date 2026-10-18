@@ -1,3 +1,4 @@
+const path = require('path');
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -6,7 +7,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  AttachmentBuilder
+  AttachmentBuilder,
 } = require('discord.js');
 
 const session = require('./sessionManager');
@@ -14,25 +15,68 @@ const session = require('./sessionManager');
 const FLOW = 'rgp';
 
 const RATES = {
-  1: 125,
-  2: 120,
-  3: 120
+  1: 130,
+  2: 135,
+  3: 120,
 };
-const GROUP_EMOJIS = {
-  1: '🌙',
-  2: '🌌',
-  3: '🪐'
+
+const GROUP_CONFIGS = {
+  1: {
+    rate: 130,
+    title: '🌙 Robuk Via Group payout r130 – Price List',
+    name: 'Group Payout R130 Min 10krbx',
+    requirements: [
+      '- Wajib berada di group minimal 2 minggu',
+      '- Robux masuk instant tanpa delay (jika sudah 2 minggu di group)',
+      '- Pembelian minimum 10k robux no maximum.',
+      '- Jika robux belum masuk mohon check ke transaction dan cek robux pending ( tidak tentu tergantung account )',
+    ],
+  },
+  2: {
+    rate: 135,
+    title: '🌙 Robuk Via Group payout r135 – Price List',
+    name: 'Group Payout R135 ( min 1rbx - max 9999rbx )',
+    requirements: [
+      '- Wajib berada di group minimal 2 minggu',
+      '- Robux masuk instant tanpa delay (jika sudah 2 minggu di group)',
+      '- Pembelian no minimum , max 9999rbx',
+      '- Jika robux belum masuk mohon check ke transaction dan cek robux pending ( tidak tentu tergantung account )',
+    ],
+  },
+  3: {
+    rate: 120,
+    title: '🪐 Robuk Via Group payout 3 – Price List',
+    name: 'Robuk Via Group payout 3',
+    requirements: [
+      '- Wajib berada di group minimal 2 minggu',
+      '- Robux masuk instant tanpa delay (jika sudah 2 minggu di group)',
+    ],
+  },
 };
+
 function formatIDR(amount) {
   return Math.round(amount).toLocaleString('id-ID');
 }
-async function showPriceList(interaction, groupNum) {
 
-  const rate = RATES[groupNum];
-  const banner = new AttachmentBuilder('./pricing.png');
+async function showPriceList(interaction, groupNum) {
+  await interaction.deferReply({ flags: 64 });
+
+  const cfg = GROUP_CONFIGS[groupNum] || {
+    rate: RATES[groupNum] || 120,
+    title: `🌙 Robuk Via Group payout ${groupNum} – Price List`,
+    name: `Group Payout ${groupNum}`,
+    requirements: [
+      '- Wajib berada di group minimal 2 minggu',
+      '- Robux masuk instant tanpa delay (jika sudah 2 minggu di group)',
+    ],
+  };
+
+  const rate = cfg.rate;
+  const bannerPath = path.join(__dirname, '..', 'pricing.png');
+  const banner = new AttachmentBuilder(bannerPath, { name: 'pricing.png' });
 
   const embed = new EmbedBuilder()
-    .setTitle(`${GROUP_EMOJIS[groupNum]} Robuk Via Group payout ${groupNum} – Price List`)
+    .setTitle(cfg.title)
     .setColor(0x57F287)
     .setDescription(`
 ⏣ **100 Rbx** - ${formatIDR(100 * rate)} 💰
@@ -42,8 +86,7 @@ async function showPriceList(interaction, groupNum) {
 **Rate:** ${rate} / ⏣1
 
 📌 **Requirements**
-- Wajib berada di group minimal **2 minggu**
-- Robux masuk **instant tanpa delay** (jika sudah 2 minggu di group)
+${cfg.requirements.join('\n')}
 
 🔗 Join group:
 Group 1
@@ -59,9 +102,9 @@ https://www.roblox.com/share/g/975223
 Group 6
 https://www.roblox.com/share/g/926136
 
-**Cara membeli : **
-✅Check ketersediaan akun di ⁠https://discord.com/channels/1435168751158038700/1435168759039000708 , ketik \`/payout\` username
-Jika belum 2 minggu/not eligible silahkan tunggu sampai akun bisa di kirim payout.
+Cara membeli :
+✅Check ketersediaan akun di 🤖〢bot-command , ketik \`/payout\` username
+🚫Jika belum 2 minggu/not eligible silahkan tunggu sampai akun bisa di kirim payout.
 ✅Robux via group payout bersikap fleksible , bisa berapapun robux nya sesuai yang kalian inginkan (tidak terpaku pada pricelist)
 `)
     .setImage('attachment://pricing.png')
@@ -76,34 +119,31 @@ Jika belum 2 minggu/not eligible silahkan tunggu sampai akun bisa di kirim payou
       .setEmoji('🛒')
   );
 
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [embed],
     components: [row],
     files: [banner],
-    ephemeral: true
   });
 }
 
 async function handleInteraction(interaction) {
-
   const id = interaction.customId;
   const userId = interaction.user.id;
 
-   if (id.startsWith('rgp_order_po_')) {
-      const groupNum = id.replace('rgp_order_po_', '');
-      session.setSession(userId, { flow: FLOW, step: 1, category: groupNum });
-      return showModal(interaction, groupNum);
-    }
+  if (id.startsWith('rgp_order_po_')) {
+    const groupNum = id.replace('rgp_order_po_', '');
+    session.setSession(userId, { flow: FLOW, step: 1, category: groupNum });
+    return showModal(interaction, groupNum);
+  }
 
   if (interaction.isModalSubmit() && interaction.customId === 'rgp_modal') {
-
     const username = interaction.fields.getTextInputValue('rgp_username');
     const amount = interaction.fields.getTextInputValue('rgp_amount');
 
     session.updateSession(userId, {
       step: 2,
       username,
-      amount
+      amount,
     });
 
     return showSummary(interaction);
@@ -117,16 +157,18 @@ async function handleInteraction(interaction) {
     return interaction.update({
       content: '❌ Order cancelled.',
       embeds: [],
-      components: []
+      components: [],
     });
   }
 }
 
 async function showModal(interaction, category) {
+  const cfg = GROUP_CONFIGS[category];
+  const modalTitle = cfg ? `⚡ ${cfg.name}`.slice(0, 45) : `⚡ Robuk Via Group payout ${category}`;
 
   const modal = new ModalBuilder()
     .setCustomId('rgp_modal')
-    .setTitle(`⚡ Robuk Via Group payout ${category}`)
+    .setTitle(modalTitle);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(
@@ -150,21 +192,22 @@ async function showModal(interaction, category) {
 }
 
 async function showSummary(interaction) {
-
-const s = session.getSession(interaction.user.id);
-  const rate = RATES[s.category];
+  const s = session.getSession(interaction.user.id);
+  const cfg = GROUP_CONFIGS[s.category];
+  const rate = cfg?.rate || RATES[s.category] || 120;
   const total = Number(s.amount) * rate;
+  const productName = cfg?.name || `Robuk Via Group payout ${s.category}`;
 
   const embed = new EmbedBuilder()
     .setTitle('🛍️ Detail Pembelian 🛍️')
     .setColor(0x5865F2)
     .setDescription(
-    `📄 **Produk:** ⚡ Robuk Via Group payout ${s.category}\n`+
-    `👤 **Username:** ${s.username}\n` +
-    `💰 **Jumlah Robux:** ${s.amount}\n` +
-    `📊 **Rate:** ${rate} / ⏣1\n` +
-    `💵 **Total:** ${formatIDR(total)} 💰`
-  )
+      `📄 **Produk:** ⚡ ${productName}\n` +
+      `👤 **Username:** ${s.username}\n` +
+      `💰 **Jumlah Robux:** ${s.amount}\n` +
+      `📊 **Rate:** ${rate} / ⏣1\n` +
+      `💵 **Total:** ${formatIDR(total)} 💰`
+    )
     .setFooter({
       text: '⚠️ Pastikan sudah di dalam group community selama 2+ minggu!'
     });
@@ -184,26 +227,27 @@ const s = session.getSession(interaction.user.id);
   return interaction.reply({
     embeds: [embed],
     components: [row],
-    ephemeral: true
+    flags: 64,
   });
 }
 
 async function createTicket(interaction) {
-
   const { createTicket: openTicket } = require('../tickets/createTicket');
 
   const s = session.getSession(interaction.user.id);
-  const rate = RATES[s.category];
+  const cfg = GROUP_CONFIGS[s.category];
+  const rate = cfg?.rate || RATES[s.category] || 120;
   const total = Number(s.amount) * rate;
+  const productName = cfg?.name || `Robuk Via Group payout ${s.category}`;
 
   const summary = `
-**📋Produk:** Robuk Via Group payout ${s.category}
+**📋Produk:** ${productName}
 **👤Username:** ${s.username}
 **💰Jumlah Robux:** ${s.amount} Robux
 **📊Rate:** ${rate} / ⏣1
 **💵Total:** ${formatIDR(total)} 💰
 `;
- const instruction =
+  const instruction =
   `📌 **Instruksi:**
 • Robux via Group payout instant tanpa delay.
 • Pastikan sudah 2 minggu di dalam group
@@ -212,10 +256,10 @@ async function createTicket(interaction) {
 • Setelah selesai, tiket akan ditutup oleh admin.`;
 
   await openTicket(interaction, {
-    orderType: `Robuk Via Group payout ${s.category}`,
+    orderType: productName,
     categoryKey: 'robuxGroupPayout',
     summaryText: summary,
-    instructionText: instruction
+    instructionText: instruction,
   });
 
   session.deleteSession(interaction.user.id);
@@ -223,5 +267,5 @@ async function createTicket(interaction) {
 
 module.exports = {
   showPriceList,
-  handleInteraction
+  handleInteraction,
 };
