@@ -9,6 +9,8 @@ const {
   TextInputStyle,
   EmbedBuilder,
   AttachmentBuilder,
+  ChannelType,
+  PermissionFlagsBits,
 } = require('discord.js');
 
 const config = require('../config');
@@ -171,9 +173,57 @@ async function handleTestimonialModal(interaction, client) {
   }
 }
 
+/**
+ * Finds or creates a hidden storage channel dedicated to holding transcript HTML files.
+ * This keeps the staff log channel, public channel, and customer DMs free of the ugly raw HTML preview box.
+ */
+async function getStorageChannel(guild) {
+  if (!guild) return null;
+  const name = 'transcript-storage';
+  let storageChannel = guild.channels.cache.find(c => c.name === name);
+  if (storageChannel) return storageChannel;
+
+  try {
+    const channels = await guild.channels.fetch().catch(() => null);
+    if (channels) {
+      storageChannel = channels.find(c => c && c.name === name);
+      if (storageChannel) return storageChannel;
+    }
+  } catch {}
+
+  try {
+    storageChannel = await guild.channels.create({
+      name: name,
+      type: ChannelType.GuildText,
+      topic: 'Internal storage for ticket HTML transcripts (hidden from members)',
+      permissionOverwrites: [
+        {
+          id: guild.roles.everyone.id,
+          deny: [PermissionFlagsBits.ViewChannel],
+        },
+        {
+          id: guild.client.user.id,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.ReadMessageHistory,
+          ],
+        },
+      ],
+    });
+    console.log(`[Transcript Storage] Created hidden transcript storage channel: #${storageChannel.name}`);
+    return storageChannel;
+  } catch (err) {
+    console.warn('[Transcript Storage] Could not find or create hidden storage channel:', err.message || err);
+    return null;
+  }
+}
+
 module.exports = {
   buildRatingRow,
   buildTranscriptRow,
+  getStorageChannel,
   handleRatingButton,
   handleTestimonialModal,
 };

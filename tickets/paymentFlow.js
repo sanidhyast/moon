@@ -10,7 +10,7 @@ const {
 } = require('discord.js');
 
 const { createTranscript } = require('discord-html-transcripts');
-const { buildRatingRow, buildTranscriptRow } = require('./testimonialFlow');
+const { buildRatingRow, buildTranscriptRow, getStorageChannel } = require('./testimonialFlow');
 const config = require('../config');
 
 function getTicketMeta(channel) {
@@ -263,7 +263,7 @@ async function handleOrderDone(interaction) {
           transcriptAttachment = await createTranscript(interaction.channel, {
             limit: -1,
             returnType: 'attachment',
-            filename: `SPOILER_transcript-${interaction.channel.name}.html`,
+            filename: `transcript-${interaction.channel.name}.html`,
             saveImages: false,
             poweredBy: false,
           });
@@ -271,9 +271,26 @@ async function handleOrderDone(interaction) {
           console.error('[handleOrderDone Transcript Error]', transErr);
         }
 
-        // Upload transcript to log channel to obtain CDN URL for the View Transcript button
+        // Upload transcript to hidden storage channel to obtain CDN URL
         let transcriptUrl = null;
-        if (config.transcriptLogChannelId && transcriptAttachment) {
+        if (transcriptAttachment) {
+          try {
+            const guild = interaction.guild;
+            const storageChannel = await getStorageChannel(guild);
+            if (storageChannel) {
+              const storedMsg = await storageChannel.send({
+                content: `📁 Order Done Transcript for #${interaction.channel.name} (<@${customer.id}>)`,
+                files: [transcriptAttachment],
+              });
+              transcriptUrl = storedMsg.attachments.first()?.url || null;
+            }
+          } catch (logErr) {
+            console.error('[handleOrderDone Storage Error]', logErr);
+          }
+        }
+
+        // Send clean embed + button to admin log channel (NO file attached -> no code preview)
+        if (config.transcriptLogChannelId) {
           try {
             const guild = interaction.guild;
             const logChannel = guild?.channels?.cache?.get(config.transcriptLogChannelId)
@@ -289,18 +306,16 @@ async function handleOrderDone(interaction) {
                 )
                 .setTimestamp();
 
-              const logMsg = await logChannel.send({
-                embeds: [doneLogEmbed],
-                files: [transcriptAttachment],
-              });
-              if (logMsg && logMsg.attachments?.size > 0) {
-                transcriptUrl = logMsg.attachments.first()?.url || null;
-                if (transcriptUrl) {
-                  await logMsg.edit({
-                    components: [buildTranscriptRow(transcriptUrl)],
-                  }).catch(() => {});
-                }
+              const logComponents = [];
+              if (transcriptUrl) {
+                logComponents.push(buildTranscriptRow(transcriptUrl));
               }
+
+              // NO files attached here -> completely eliminates the code preview box!
+              await logChannel.send({
+                embeds: [doneLogEmbed],
+                components: logComponents,
+              });
             }
           } catch (logErr) {
             console.error('[handleOrderDone Log Error]', logErr);

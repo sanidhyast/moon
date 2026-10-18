@@ -11,7 +11,7 @@ const {
 } = require('discord.js');
 
 const { createTranscript } = require('discord-html-transcripts');
-const { buildRatingRow, buildTranscriptRow } = require('./testimonialFlow');
+const { buildRatingRow, buildTranscriptRow, getStorageChannel } = require('./testimonialFlow');
 const config = require('../config');
 const { closeTicketRecord } = require('../database/supabase');
 
@@ -149,7 +149,7 @@ async function handleCloseModal(interaction) {
     transcriptAttachment = await createTranscript(channel, {
       limit: -1,
       returnType: 'attachment',
-      filename: `SPOILER_transcript-${channel.name}.html`,
+      filename: `transcript-${channel.name}.html`,
       saveImages: false,
       poweredBy: false,
     });
@@ -158,8 +158,24 @@ async function handleCloseModal(interaction) {
     transcriptAttachment = null;
   }
 
-  // ── Send transcript to ADMIN log channel ───────────────
+  // ── Upload transcript to hidden storage channel ─────────────────
   let transcriptUrl = null;
+  if (transcriptAttachment) {
+    try {
+      const storageChannel = await getStorageChannel(guild);
+      if (storageChannel) {
+        const storedMsg = await storageChannel.send({
+          content: `📁 Transcript for #${channel.name} (Closed by ${interaction.user.tag})`,
+          files: [transcriptAttachment],
+        });
+        transcriptUrl = storedMsg.attachments.first()?.url || null;
+      }
+    } catch (storeErr) {
+      console.error('[Transcript Storage Upload Error]', storeErr);
+    }
+  }
+
+  // ── Send transcript to ADMIN log channel ───────────────
   if (!config.transcriptLogChannelId) {
     console.warn('[Transcript Log] TRANSCRIPT_LOG_CHANNEL_ID is not configured in .env');
   } else {
@@ -187,19 +203,17 @@ async function handleCloseModal(interaction) {
           )
           .setTimestamp();
 
-        const logMsg = await logChannel.send({
-          embeds: [logEmbed],
-          files: transcriptAttachment ? [transcriptAttachment] : [],
-        });
-        if (logMsg && logMsg.attachments?.size > 0) {
-          transcriptUrl = logMsg.attachments.first()?.url || null;
-          if (transcriptUrl) {
-            await logMsg.edit({
-              components: [buildTranscriptRow(transcriptUrl)],
-            }).catch(() => {});
-          }
+        const logComponents = [];
+        if (transcriptUrl) {
+          logComponents.push(buildTranscriptRow(transcriptUrl));
         }
-        console.log(`[Transcript Log] Successfully sent ticket transcript for #${channel.name} to admin channel.`);
+
+        // NO files attached here -> completely eliminates the code preview box!
+        await logChannel.send({
+          embeds: [logEmbed],
+          components: logComponents,
+        });
+        console.log(`[Transcript Log] Successfully sent ticket transcript embed for #${channel.name} to admin channel.`);
       }
     } catch (err) {
       console.error('[Transcript Log Error]', err);
