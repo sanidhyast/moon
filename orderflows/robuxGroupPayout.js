@@ -90,11 +90,11 @@ ${cfg.requirements.join('\n')}
 
 🔗 Join group:
 Group 1
-https://www.roblox.com/communities/634467947/Moonie-Studio#!/about
+https://www.roblox.com/share/g/634467947
 Group 2
-https://www.roblox.com/communities/522885194/Dreamies-Studio#!/about
+https://www.roblox.com/share/g/522885194
 Group 3
-https://www.roblox.com/communities/438664165/Galaxies-World#!/about
+https://www.roblox.com/share/g/438664165
 Group 4
 https://www.roblox.com/share/g/959865
 Group 5
