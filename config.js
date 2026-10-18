@@ -4,6 +4,7 @@ module.exports = {
   // Channels
   publicTranscriptChannelId: process.env.PUBLIC_TRANSCRIPT_CHANNEL_ID,
   transcriptLogChannelId: process.env.TRANSCRIPT_LOG_CHANNEL_ID,
+  testimonialChannelId: process.env.TESTIMONIAL_CHANNEL_ID || '1436690762866753536',
 
   // Roles
   adminRoleId:            process.env.ADMIN_ROLE_ID,

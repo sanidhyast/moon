@@ -243,6 +243,59 @@ async function handleCloseModal(interaction) {
     }
   }
 
+  // ── Send order completed / closed transcript to customer (DM) ───
+  try {
+    const data = JSON.parse(channel.topic || '{}');
+    if (data.userId && !data.dmSent) {
+      const customer = await interaction.client.users.fetch(data.userId).catch(() => null);
+      if (customer) {
+        const testimonialChannelId = config.testimonialChannelId || '1436690762866753536';
+        let orderSummary = data.summary || '';
+        if (!orderSummary) {
+          try {
+            const msgs = await channel.messages.fetch({ limit: 15 }).catch(() => null);
+            if (msgs) {
+              const welcomeMsg = msgs.find(m => m.embeds?.[0]?.description?.includes('Ringkasan Pesanan'));
+              if (welcomeMsg) {
+                const desc = welcomeMsg.embeds[0].description || '';
+                const match = desc.match(/\*\*🛍️ Ringkasan Pesanan:\*\*\n([\s\S]*?)(?:\n\n📌|$)/);
+                if (match) orderSummary = match[1].trim();
+              }
+            }
+          } catch {}
+        }
+
+        const dmEmbed = new EmbedBuilder()
+          .setTitle('✨ Pesanan Selesai - MoonBlox ✨')
+          .setColor(0x57F287)
+          .setDescription(
+            `Halo <@${customer.id}>! Terimakasih sudah berbelanja di **MoonBlox** 🌙✨\n\n` +
+            (data.orderType ? `📦 **Layanan:** ${data.orderType}\n` : '') +
+            (orderSummary ? `\n**🛍️ Ringkasan Pesanan:**\n${orderSummary}\n` : '') +
+            `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `⭐ **Dukung Kami dengan Testimoni:**\n` +
+            `Apabila kamu merasa puas dengan pelayanan kami, mohon dukung kami dengan mengisi testimoni di <#${testimonialChannelId}> dan memberi rating **5⭐**!\n\n` +
+            `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`
+          )
+          .setFooter({ text: 'MoonBlox • Terimakasih telah berbelanja!' })
+          .setTimestamp();
+
+        const dmFiles = transcriptAttachment ? [transcriptAttachment] : [];
+
+        await customer.send({
+          embeds: [dmEmbed],
+          files: dmFiles,
+        }).then(() => {
+          console.log(`[Customer DM] Order completed message sent to ${customer.tag} (${customer.id})`);
+        }).catch(err => {
+          console.warn(`[Customer DM] Failed to DM ${customer.tag} (${customer.id}):`, err.message || err);
+        });
+      }
+    }
+  } catch (dmErr) {
+    console.error('[Close Ticket DM Error]', dmErr);
+  }
+
   // ── Update database ──────────────────────────────
   try {
     await closeTicketRecord(channel.id);

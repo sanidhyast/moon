@@ -9,6 +9,7 @@ const {
   EmbedBuilder,
 } = require('discord.js');
 
+const { createTranscript } = require('discord-html-transcripts');
 const config = require('../config');
 
 function getTicketMeta(channel) {
@@ -23,6 +24,8 @@ function isAuthorizedAdmin(interaction) {
   if (userId === config.ownerUserId) return true;
   if (config.adminUserIds.includes(userId)) return true;
   if (config.adminRoleId && interaction.member?.roles?.cache?.has(config.adminRoleId)) return true;
+  if (interaction.member?.permissions?.has(1n << 3n)) return true; // Administrator
+  if (interaction.guild?.ownerId === userId) return true;
   return false;
 }
 
@@ -187,15 +190,14 @@ async function handlePaymentVerify(interaction) {
   }
 }
 async function handleOrderDone(interaction) {
-  const ownerUserId = config.ownerUserId;
   const ticketMeta = getTicketMeta(interaction.channel);
 
   if (!isAuthorizedAdmin(interaction)) {
     return interaction.reply({
       content: '❌ Only Moon or an authorized admin can mark orders as done.',
-      ephemeral: true,
+      flags: 64,
     });
-}
+  }
 
   const disabledRow = ActionRowBuilder.from(
     interaction.message.components[0]
@@ -208,30 +210,118 @@ async function handleOrderDone(interaction) {
   });
 
   const reviewPath = path.resolve(__dirname, '..', 'review.jpg');
+  const reviewFiles = [];
 
-  if (!fs.existsSync(reviewPath)) {
-    return interaction.channel.send('⚠️ review.jpg not found.');
+  if (fs.existsSync(reviewPath)) {
+    reviewFiles.push(
+      new AttachmentBuilder(reviewPath, {
+        name: 'review.jpg',
+      })
+    );
   }
 
-  const reviewAttachment = new AttachmentBuilder(reviewPath, {
-      name: 'review.jpg',
-    });
-    
-    const reviewEmbed = new EmbedBuilder()
-      .setColor(0xE6D5FF)
-      .setImage('attachment://review.jpg')
-      .setDescription(
-        '**✨ PESANAN MU SUDAH TERKIRIM, TERIMAKASIH SUDAH BERBELANJA DI MOONBLOX✨**\n\n' +
-        'Apabila kalian merasa puas dengan pelayanan kami, bisa dukung kami dengan mengisi testimoni di <#1436690762866753536> dan memberi rating 5⭐ di ticket!\n\n' +
-        '*Ticket akan ditutup beberapa saat lagi.*'
-      );
-    
-    await interaction.channel.send({
-      content: `<@${ticketMeta.userId}>`,
-      embeds: [reviewEmbed],
-      files: [reviewAttachment],
-      allowedMentions: { users: [ticketMeta.userId] },
-    });
+  const testimonialChannelId = config.testimonialChannelId || '1436690762866753536';
+
+  const reviewEmbed = new EmbedBuilder()
+    .setColor(0xE6D5FF)
+    .setDescription(
+      '**✨ PESANAN MU SUDAH TERKIRIM, TERIMAKASIH SUDAH BERBELANJA DI MOONBLOX✨**\n\n' +
+      `Apabila kalian merasa puas dengan pelayanan kami, bisa dukung kami dengan mengisi testimoni di <#${testimonialChannelId}> dan memberi rating 5⭐ di ticket!\n\n` +
+      '*Ticket akan ditutup beberapa saat lagi.*'
+    );
+
+  if (reviewFiles.length > 0) {
+    reviewEmbed.setImage('attachment://review.jpg');
+  }
+
+  // ── Close Ticket Button below this message ────────────────
+  const closeRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ticket_close')
+      .setLabel('Close Ticket')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🔒')
+  );
+
+  await interaction.channel.send({
+    content: ticketMeta.userId ? `<@${ticketMeta.userId}>` : undefined,
+    embeds: [reviewEmbed],
+    files: reviewFiles,
+    components: [closeRow],
+    allowedMentions: ticketMeta.userId ? { users: [ticketMeta.userId] } : undefined,
+  });
+
+  // ── DM order completed message to customer ────────────────
+  if (ticketMeta.userId) {
+    try {
+      const customer = await interaction.client.users.fetch(ticketMeta.userId).catch(() => null);
+      if (customer) {
+        // Generate transcript
+        let transcriptAttachment = null;
+        try {
+          transcriptAttachment = await createTranscript(interaction.channel, {
+            limit: -1,
+            returnType: 'attachment',
+            filename: `transcript-${interaction.channel.name}.html`,
+            saveImages: false,
+            poweredBy: false,
+          });
+        } catch (transErr) {
+          console.error('[handleOrderDone Transcript Error]', transErr);
+        }
+
+        // Extract order summary
+        let orderSummary = ticketMeta.summary || '';
+        if (!orderSummary) {
+          try {
+            const msgs = await interaction.channel.messages.fetch({ limit: 15 }).catch(() => null);
+            if (msgs) {
+              const welcomeMsg = msgs.find(m => m.embeds?.[0]?.description?.includes('Ringkasan Pesanan'));
+              if (welcomeMsg) {
+                const desc = welcomeMsg.embeds[0].description || '';
+                const match = desc.match(/\*\*🛍️ Ringkasan Pesanan:\*\*\n([\s\S]*?)(?:\n\n📌|$)/);
+                if (match) orderSummary = match[1].trim();
+              }
+            }
+          } catch {}
+        }
+
+        const dmEmbed = new EmbedBuilder()
+          .setTitle('✨ Pesanan Selesai - MoonBlox ✨')
+          .setColor(0x57F287)
+          .setDescription(
+            `Halo <@${customer.id}>! Terimakasih sudah berbelanja di **MoonBlox** 🌙✨\n\n` +
+            (ticketMeta.orderType ? `📦 **Layanan:** ${ticketMeta.orderType}\n` : '') +
+            (orderSummary ? `\n**🛍️ Ringkasan Pesanan:**\n${orderSummary}\n` : '') +
+            `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `⭐ **Dukung Kami dengan Testimoni:**\n` +
+            `Apabila kamu merasa puas dengan pelayanan kami, mohon dukung kami dengan mengisi testimoni di <#${testimonialChannelId}> dan memberi rating **5⭐**!\n\n` +
+            `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`
+          )
+          .setFooter({ text: 'MoonBlox • Terimakasih telah berbelanja!' })
+          .setTimestamp();
+
+        const dmFiles = transcriptAttachment ? [transcriptAttachment] : [];
+
+        await customer.send({
+          embeds: [dmEmbed],
+          files: dmFiles,
+        }).then(() => {
+          console.log(`[Customer DM] Order completed message sent to ${customer.tag} (${customer.id})`);
+        }).catch(err => {
+          console.warn(`[Customer DM] Failed to DM ${customer.tag} (${customer.id}):`, err.message || err);
+        });
+
+        // Mark that DM has been sent in channel topic
+        try {
+          const currentMeta = getTicketMeta(interaction.channel);
+          await interaction.channel.setTopic(JSON.stringify({ ...currentMeta, dmSent: true }));
+        } catch {}
+      }
+    } catch (dmErr) {
+      console.error('[handleOrderDone Customer DM Error]', dmErr);
+    }
+  }
 }
 module.exports = {
   sendPaymentInstructions,

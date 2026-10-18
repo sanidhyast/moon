@@ -145,6 +145,8 @@ async function createTicket(interaction, { orderType, categoryKey, summaryText, 
         openedAt,
         userId: user.id,
         ownerUserId: config.ownerUserId || null,
+        orderType,
+        summary: (summaryText || '').trim().slice(0, 500),
       }),
     });
   } catch (error) {
