@@ -17,7 +17,7 @@ const FLOW = 'rgp';
 const RATES = {
   1: 130,
   2: 135,
-  3: 120,
+  3: 125,
 };
 
 const GROUP_CONFIGS = {
@@ -44,12 +44,15 @@ const GROUP_CONFIGS = {
     ],
   },
   3: {
-    rate: 120,
-    title: '🪐 Robuk Via Group payout 3 – Price List',
-    name: 'Robuk Via Group payout 3',
+    rate: 125,
+    title: '🌙 Robuk Via Group payout r125 – Price List',
+    name: 'Group Payout Promo R125 min 5krbx',
     requirements: [
       '- Wajib berada di group minimal 2 minggu',
       '- Robux masuk instant tanpa delay (jika sudah 2 minggu di group)',
+      '- Pembelian minimum 5k robux no maximum.',
+      '- Penawaran terbatas jika ada announcement promo only.',
+      '- Jika robux belum masuk mohon check ke transaction dan cek robux pending ( tidak tentu tergantung account )',
     ],
   },
 };
