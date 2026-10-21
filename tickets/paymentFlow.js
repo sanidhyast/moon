@@ -73,8 +73,9 @@ Dana - 085283960141 AN Yani M.
   const paymentDoneRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('payment_done')
-      .setLabel('✅ Sudah transfer')
+      .setLabel('Sudah transfer')
       .setStyle(ButtonStyle.Success)
+      .setEmoji('✅'),
     new ButtonBuilder()
       .setCustomId('payment_cancel')
       .setLabel('Cancel Payment')
