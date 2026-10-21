@@ -94,15 +94,20 @@ async function handleCloseModal(interaction) {
  * Shared execution logic to close a ticket, generate transcripts, log, and delete channel.
  */
 async function executeCloseTicket({ channel, guild, closedByUser, reason, client, isCancelled = false }) {
-  // ── Get Open Time ─────────────────────────
+  // ── Get Open Time & Topic Data ───────────
   let openedAt = 'Unknown';
+  let isCancelledTopic = false;
   try {
-    const data = JSON.parse(channel.topic);
+    const data = JSON.parse(channel.topic || '{}');
     if (data.openedAt) {
       openedAt = `<t:${Math.floor(new Date(data.openedAt).getTime() / 1000)}:F>`;
     }
+    if (data.cancelled) {
+      isCancelledTopic = true;
+    }
   } catch {}
 
+  const actuallyCancelled = isCancelled || isCancelledTopic;
   const closedAt = `<t:${Math.floor(Date.now() / 1000)}:F>`;
   const closedUserTag = closedByUser?.tag || closedByUser?.username || 'Unknown';
 
@@ -204,12 +209,12 @@ async function executeCloseTicket({ channel, guild, closedByUser, reason, client
         console.error(`[Transcript Log] Admin log channel (${config.transcriptLogChannelId}) not found in guild.`);
       } else {
         const logEmbed = new EmbedBuilder()
-          .setTitle(isCancelled ? '❌ Ticket Cancelled' : '📁 Ticket Transcript')
+          .setTitle(actuallyCancelled ? '❌ Ticket Cancelled' : '📁 Ticket Transcript')
           .setColor(0xED4245)
           .addFields(
             { name: 'Ticket', value: channel.name, inline: true },
             { name: 'Closed by', value: closedUserTag, inline: true },
-            { name: 'Reason', value: reason || (isCancelled ? 'Payment cancelled' : 'No reason provided') },
+            { name: 'Reason', value: reason || (actuallyCancelled ? 'Payment cancelled' : 'No reason provided') },
             { name: '📅 Opened At', value: openedAt },
             { name: '📅 Closed At', value: closedAt },
             { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
@@ -253,12 +258,12 @@ async function executeCloseTicket({ channel, guild, closedByUser, reason, client
         const publicFiles = hasLogo ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
 
         const publicEmbed = new EmbedBuilder()
-          .setTitle(isCancelled ? '❌ Ticket Cancelled' : '📁 Ticket Transcript')
+          .setTitle(actuallyCancelled ? '❌ Ticket Cancelled' : '📁 Ticket Transcript')
           .setColor(0xFEE75C)
           .addFields(
             { name: 'Ticket', value: channel.name, inline: true },
             { name: 'Closed by', value: closedUserTag, inline: true },
-            { name: 'Reason', value: reason || (isCancelled ? 'Payment cancelled' : 'No reason provided') },
+            { name: 'Reason', value: reason || (actuallyCancelled ? 'Payment cancelled' : 'No reason provided') },
             { name: '📅 Opened At', value: openedAt },
             { name: '📅 Closed At', value: closedAt },
             { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
@@ -282,7 +287,7 @@ async function executeCloseTicket({ channel, guild, closedByUser, reason, client
   }
 
   // ── Send order completed / closed transcript to customer (DM) (only if not cancelled) ───
-  if (!isCancelled) {
+  if (!actuallyCancelled) {
     try {
       const data = JSON.parse(channel.topic || '{}');
       if (data.userId && !data.dmSent) {
@@ -377,7 +382,7 @@ async function executeCloseTicket({ channel, guild, closedByUser, reason, client
   // ── Closed embed ─────────────────────────────────
   try {
     const closedEmbed = new EmbedBuilder()
-      .setTitle(isCancelled ? '❌ Ticket Cancelled & Closed' : '🔒 Ticket Closed')
+      .setTitle(actuallyCancelled ? '❌ Ticket Cancelled & Closed' : '🔒 Ticket Closed')
       .setColor(0xED4245)
       .setDescription(
         `This ticket was closed by **${closedUserTag}**.\nReason: **${reason}**\n\nDeleting channel in **5 seconds**...`

@@ -459,15 +459,42 @@ async function handlePaymentCancel(interaction) {
     }
   }
 
-  // Notify channel and execute complete ticket closure (generate transcript, log, and delete channel)
-  const { executeCloseTicket } = require('./closeTicket');
-  await executeCloseTicket({
-    channel,
-    guild,
-    closedByUser: interaction.user,
-    reason: `Payment cancelled by ${interaction.user.tag}`,
-    client: interaction.client,
-    isCancelled: true,
+  if (!interaction.replied && !interaction.deferred) {
+    await interaction.deferUpdate().catch(() => {});
+  }
+
+  // Update channel topic to mark as cancelled & dmSent
+  try {
+    const currentMeta = getTicketMeta(channel);
+    await channel.setTopic(JSON.stringify({ ...currentMeta, cancelled: true, dmSent: true }));
+  } catch (topicErr) {
+    console.error('[handlePaymentCancel Topic Error]', topicErr);
+  }
+
+  // ── Show cancellation message with Close Ticket button (admin closes ticket) ──
+  const closeRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ticket_close')
+      .setLabel('Close Ticket')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🔒')
+  );
+
+  const cancelChannelEmbed = new EmbedBuilder()
+    .setColor(0xED4245)
+    .setTitle('❌ Pesanan Dibatalkan / Order Cancelled')
+    .setDescription(
+      `Pembayaran / pesanan telah dibatalkan oleh <@${interaction.user.id}>.\n` +
+      `DM konfirmasi pembatalan pesanan telah dikirimkan ke pembeli.\n\n` +
+      `*Silakan admin klik tombol **Close Ticket** di bawah untuk menutup dan mengarsipkan tiket.*`
+    )
+    .setTimestamp();
+
+  await channel.send({
+    content: ticketMeta.userId ? `<@${ticketMeta.userId}>` : undefined,
+    embeds: [cancelChannelEmbed],
+    components: [closeRow],
+    allowedMentions: ticketMeta.userId ? { users: [ticketMeta.userId] } : undefined,
   });
 }
 
