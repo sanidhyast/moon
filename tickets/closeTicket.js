@@ -258,7 +258,7 @@ async function executeCloseTicket({ channel, guild, closedByUser, reason, client
         const publicFiles = hasLogo ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
 
         const publicEmbed = new EmbedBuilder()
-          .setTitle(actuallyCancelled ? '❌ Ticket Cancelled' : '📁 Ticket Transcript')
+          .setTitle(actuallyCancelled ? '❌ Ticket Cancelled' : ' ✅ Ticket Sucsess')
           .setColor(0xFEE75C)
           .addFields(
             { name: 'Ticket', value: channel.name, inline: true },
