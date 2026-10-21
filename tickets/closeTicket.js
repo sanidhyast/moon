@@ -73,9 +73,27 @@ async function handleCloseModal(interaction) {
 
   const channel = interaction.channel;
   const guild = interaction.guild;
-
   const reason = interaction.fields.getTextInputValue('close_reason');
 
+  await interaction.reply({
+    content: '🔒 Closing ticket and generating transcript...',
+    flags: 64,
+  }).catch(() => {});
+
+  await executeCloseTicket({
+    channel,
+    guild,
+    closedByUser: interaction.user,
+    reason: reason || 'No reason provided',
+    client: interaction.client,
+    isCancelled: false,
+  });
+}
+
+/**
+ * Shared execution logic to close a ticket, generate transcripts, log, and delete channel.
+ */
+async function executeCloseTicket({ channel, guild, closedByUser, reason, client, isCancelled = false }) {
   // ── Get Open Time ─────────────────────────
   let openedAt = 'Unknown';
   try {
@@ -86,11 +104,7 @@ async function handleCloseModal(interaction) {
   } catch {}
 
   const closedAt = `<t:${Math.floor(Date.now() / 1000)}:F>`;
-
-  await interaction.reply({
-    content: '🔒 Closing ticket and generating transcript...',
-    flags: 64,
-  }).catch(() => {});
+  const closedUserTag = closedByUser?.tag || closedByUser?.username || 'Unknown';
 
   const allowedRoles = [
     config.adminRoleId,
@@ -165,7 +179,7 @@ async function handleCloseModal(interaction) {
       const storageChannel = await getStorageChannel(guild);
       if (storageChannel) {
         const storedMsg = await storageChannel.send({
-          content: `📁 Transcript for #${channel.name} (Closed by ${interaction.user.tag})`,
+          content: `📁 Transcript for #${channel.name} (Closed by ${closedUserTag})`,
           files: [transcriptAttachment],
         });
         transcriptUrl = storedMsg.attachments.first()?.url || null;
@@ -190,12 +204,12 @@ async function handleCloseModal(interaction) {
         console.error(`[Transcript Log] Admin log channel (${config.transcriptLogChannelId}) not found in guild.`);
       } else {
         const logEmbed = new EmbedBuilder()
-          .setTitle('📁 Ticket Transcript')
+          .setTitle(isCancelled ? '❌ Ticket Cancelled' : '📁 Ticket Transcript')
           .setColor(0xED4245)
           .addFields(
             { name: 'Ticket', value: channel.name, inline: true },
-            { name: 'Closed by', value: interaction.user.tag, inline: true },
-            { name: 'Reason', value: reason || 'No reason provided' },
+            { name: 'Closed by', value: closedUserTag, inline: true },
+            { name: 'Reason', value: reason || (isCancelled ? 'Payment cancelled' : 'No reason provided') },
             { name: '📅 Opened At', value: openedAt },
             { name: '📅 Closed At', value: closedAt },
             { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
@@ -239,12 +253,12 @@ async function handleCloseModal(interaction) {
         const publicFiles = hasLogo ? [new AttachmentBuilder(logoPath, { name: 'logo.png' })] : [];
 
         const publicEmbed = new EmbedBuilder()
-          .setTitle('📁 Ticket Transcript')
+          .setTitle(isCancelled ? '❌ Ticket Cancelled' : '📁 Ticket Transcript')
           .setColor(0xFEE75C)
           .addFields(
             { name: 'Ticket', value: channel.name, inline: true },
-            { name: 'Closed by', value: interaction.user.tag, inline: true },
-            { name: 'Reason', value: reason || 'No reason provided' },
+            { name: 'Closed by', value: closedUserTag, inline: true },
+            { name: 'Reason', value: reason || (isCancelled ? 'Payment cancelled' : 'No reason provided') },
             { name: '📅 Opened At', value: openedAt },
             { name: '📅 Closed At', value: closedAt },
             { name: '👨‍💼 Admin Messages', value: `${adminCount}`, inline: true },
@@ -267,68 +281,67 @@ async function handleCloseModal(interaction) {
     }
   }
 
-  // ── Send order completed / closed transcript to customer (DM) ───
-  try {
-    const data = JSON.parse(channel.topic || '{}');
-    if (data.userId && !data.dmSent) {
-      const customer = await interaction.client.users.fetch(data.userId).catch(() => null);
-      if (customer) {
-        const testimonialChannelId = config.testimonialChannelId || '1436690762866753536';
-        let orderSummary = data.summary || '';
-        if (!orderSummary) {
-          try {
-            const msgs = await channel.messages.fetch({ limit: 15 }).catch(() => null);
-            if (msgs) {
-              const welcomeMsg = msgs.find(m => m.embeds?.[0]?.description?.includes('Ringkasan Pesanan'));
-              if (welcomeMsg) {
-                const desc = welcomeMsg.embeds[0].description || '';
-                const match = desc.match(/\*\*🛍️ Ringkasan Pesanan:\*\*\n([\s\S]*?)(?:\n\n📌|$)/);
-                if (match) orderSummary = match[1].trim();
+  // ── Send order completed / closed transcript to customer (DM) (only if not cancelled) ───
+  if (!isCancelled) {
+    try {
+      const data = JSON.parse(channel.topic || '{}');
+      if (data.userId && !data.dmSent) {
+        const targetClient = client || channel.client;
+        const customer = await targetClient.users.fetch(data.userId).catch(() => null);
+        if (customer) {
+          const testimonialChannelId = config.testimonialChannelId || '1436690762866753536';
+          let orderSummary = data.summary || '';
+          if (!orderSummary) {
+            try {
+              const msgs = await channel.messages.fetch({ limit: 15 }).catch(() => null);
+              if (msgs) {
+                const welcomeMsg = msgs.find(m => m.embeds?.[0]?.description?.includes('Ringkasan Pesanan'));
+                if (welcomeMsg) {
+                  const desc = welcomeMsg.embeds[0].description || '';
+                  const match = desc.match(/\*\*🛍️ Ringkasan Pesanan:\*\*\n([\s\S]*?)(?:\n\n📌|$)/);
+                  if (match) orderSummary = match[1].trim();
+                }
               }
-            }
-          } catch {}
+            } catch {}
+          }
+
+          const dmComponents = [buildRatingRow()];
+          if (transcriptUrl) {
+            dmComponents.push(buildTranscriptRow(transcriptUrl));
+          }
+
+          const transcriptNote = transcriptUrl
+            ? `*Klik tombol **View Transcript** di bawah sebagai bukti percakapan tiket.*`
+            : `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`;
+
+          const dmEmbed = new EmbedBuilder()
+            .setTitle('✨ Pesanan Selesai - MoonBlox ✨')
+            .setColor(0x57F287)
+            .setDescription(
+              `Halo <@${customer.id}>! Terimakasih sudah berbelanja di **MoonBlox** 🌙✨\n\n` +
+              (data.orderType ? `📦 **Layanan:** ${data.orderType}\n` : '') +
+              (orderSummary ? `\n**🛍️ Ringkasan Pesanan:**\n${orderSummary}\n` : '') +
+              `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
+              `⭐ **Beri Rating & Testimoni:**\n` +
+              `Pilih bintang di bawah untuk menilai pelayanan kami. Khusus rating **5⭐**, testimonimu akan otomatis diposting ke <#${testimonialChannelId}>!\n\n` +
+              transcriptNote
+            )
+            .setFooter({ text: 'MoonBlox • Terimakasih telah berbelanja!' })
+            .setTimestamp();
+
+          await customer.send({
+            embeds: [dmEmbed],
+            components: dmComponents,
+          }).then(() => {
+            console.log(`[Customer DM] Order completed message sent to ${customer.tag} (${customer.id})`);
+          }).catch(err => {
+            console.warn(`[Customer DM] Failed to DM ${customer.tag} (${customer.id}):`, err.message || err);
+          });
         }
-
-        const dmComponents = [buildRatingRow()];
-        if (transcriptUrl) {
-          dmComponents.push(buildTranscriptRow(transcriptUrl));
-        }
-
-        const transcriptNote = transcriptUrl
-          ? `*Klik tombol **View Transcript** di bawah sebagai bukti percakapan tiket.*`
-          : `*File transcript tiket terlampir di bawah sebagai bukti transaksi kamu.*`;
-
-        const dmEmbed = new EmbedBuilder()
-          .setTitle('✨ Pesanan Selesai - MoonBlox ✨')
-          .setColor(0x57F287)
-          .setDescription(
-            `Halo <@${customer.id}>! Terimakasih sudah berbelanja di **MoonBlox** 🌙✨\n\n` +
-            (data.orderType ? `📦 **Layanan:** ${data.orderType}\n` : '') +
-            (orderSummary ? `\n**🛍️ Ringkasan Pesanan:**\n${orderSummary}\n` : '') +
-            `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
-            `⭐ **Beri Rating & Testimoni:**\n` +
-            `Pilih bintang di bawah untuk menilai pelayanan kami. Khusus rating **5⭐**, testimonimu akan otomatis diposting ke <#${testimonialChannelId}>!\n\n` +
-            transcriptNote
-          )
-          .setFooter({ text: 'MoonBlox • Terimakasih telah berbelanja!' })
-          .setTimestamp();
-
-        // If transcriptUrl is available, omit file attachment to avoid the raw HTML code preview box in DM
-        const dmFiles = transcriptUrl ? [] : (transcriptAttachment ? [transcriptAttachment] : []);
-
-        await customer.send({
-          embeds: [dmEmbed],
-          files: dmFiles,
-          components: dmComponents,
-        }).then(() => {
-          console.log(`[Customer DM] Order completed message sent to ${customer.tag} (${customer.id})`);
-        }).catch(err => {
-          console.warn(`[Customer DM] Failed to DM ${customer.tag} (${customer.id}):`, err.message || err);
-        });
       }
+    } catch (dmErr) {
+      console.error('[Close Ticket DM Error]', dmErr);
     }
-  } catch (dmErr) {
-    console.error('[Close Ticket DM Error]', dmErr);
   }
 
   // ── Update database ──────────────────────────────
@@ -364,10 +377,10 @@ async function handleCloseModal(interaction) {
   // ── Closed embed ─────────────────────────────────
   try {
     const closedEmbed = new EmbedBuilder()
-      .setTitle('🔒 Ticket Closed')
+      .setTitle(isCancelled ? '❌ Ticket Cancelled & Closed' : '🔒 Ticket Closed')
       .setColor(0xED4245)
       .setDescription(
-        `This ticket was closed by **${interaction.user.tag}**.\nReason: **${reason}**\n\nDeleting channel in **5 seconds**...`
+        `This ticket was closed by **${closedUserTag}**.\nReason: **${reason}**\n\nDeleting channel in **5 seconds**...`
       )
       .setTimestamp();
 
@@ -379,7 +392,7 @@ async function handleCloseModal(interaction) {
   // ── Delete channel ───────────────────────────────
   setTimeout(async () => {
     try {
-      await channel.delete(`Ticket closed by ${interaction.user.tag}`);
+      await channel.delete(`Ticket closed by ${closedUserTag}`);
     } catch (err) {
       console.error('[Channel Delete Error]', err);
     }
@@ -389,4 +402,5 @@ async function handleCloseModal(interaction) {
 module.exports = {
   handleClose,
   handleCloseModal,
+  executeCloseTicket,
 };

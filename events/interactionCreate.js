@@ -29,7 +29,8 @@ const { handleClose, handleCloseModal } = require('../tickets/closeTicket');
 const {
   handlePaymentDone,
   handlePaymentVerify,
-  handleOrderDone
+  handleOrderDone,
+  handlePaymentCancel,
 } = require('../tickets/paymentFlow');
 const {
   handleRatingButton,
@@ -329,6 +330,7 @@ if (interaction.commandName === 'delete' || interaction.commandName === 'insert'
         dragon_adventures:   () => dragonAdventures.showPriceList(interaction),
         reseller_moonblox:   () => resellerMoonblox.showPriceList(interaction),
         payment_done:        () => handlePaymentDone(interaction),
+        payment_cancel:      () => handlePaymentCancel(interaction),
         payment_verify:      () => handlePaymentVerify(interaction),
         order_done:          () => handleOrderDone(interaction),
         ticket_close:        () => handleClose(interaction),

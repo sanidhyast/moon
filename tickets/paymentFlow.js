@@ -74,7 +74,12 @@ Dana - 085283960141 AN Yani M.
     new ButtonBuilder()
       .setCustomId('payment_done')
       .setLabel('Sudah transfer')
-      .setStyle(ButtonStyle.Success)
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('payment_cancel')
+      .setLabel('Cancel Payment')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('❌')
   );
 
   const paymentDoneEmbed = new EmbedBuilder()
@@ -104,7 +109,7 @@ async function handlePaymentDone(interaction) {
   }
 
   const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
-  disabledRow.components[0].setDisabled(true);
+  disabledRow.components.forEach(c => c.setDisabled(true));
 
   await interaction.update({
     components: [disabledRow],
@@ -386,9 +391,90 @@ async function handleOrderDone(interaction) {
     }
   }
 }
+
+async function handlePaymentCancel(interaction) {
+  const channel = interaction.channel;
+  const guild = interaction.guild;
+  const ticketMeta = getTicketMeta(channel);
+
+  const isCustomer = ticketMeta.userId && interaction.user.id === ticketMeta.userId;
+  const isStaff = isAuthorizedAdmin(interaction);
+
+  if (!isCustomer && !isStaff) {
+    return interaction.reply({
+      content: '❌ Only the ticket buyer or staff can cancel this payment.',
+      flags: 64,
+    });
+  }
+
+  // Disable buttons on the Payment Pending message so it cannot be clicked again
+  if (interaction.message && interaction.message.components?.length > 0) {
+    try {
+      const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
+      disabledRow.components.forEach(c => c.setDisabled(true));
+      await interaction.update({ components: [disabledRow] }).catch(() => {});
+    } catch {}
+  }
+
+  // Send Order Cancelled DM to customer
+  if (ticketMeta.userId) {
+    try {
+      const customer = await interaction.client.users.fetch(ticketMeta.userId).catch(() => null);
+      if (customer) {
+        let orderSummary = ticketMeta.summary || '';
+        if (!orderSummary) {
+          try {
+            const msgs = await channel.messages.fetch({ limit: 15 }).catch(() => null);
+            if (msgs) {
+              const welcomeMsg = msgs.find(m => m.embeds?.[0]?.description?.includes('Ringkasan Pesanan'));
+              if (welcomeMsg) {
+                const desc = welcomeMsg.embeds[0].description || '';
+                const match = desc.match(/\*\*🛍️ Ringkasan Pesanan:\*\*\n([\s\S]*?)(?:\n\n📌|$)/);
+                if (match) orderSummary = match[1].trim();
+              }
+            }
+          } catch {}
+        }
+
+        const cancelDmEmbed = new EmbedBuilder()
+          .setTitle('❌ Pesanan Dibatalkan - MoonBlox')
+          .setColor(0xED4245)
+          .setDescription(
+            `Halo <@${customer.id}>!\n\n` +
+            `**Pesanan kamu telah dibatalkan / Your order has been cancelled.**\n\n` +
+            (ticketMeta.orderType ? `📦 **Layanan:** ${ticketMeta.orderType}\n` : '') +
+            (orderSummary ? `\n**🛍️ Ringkasan Pesanan:**\n${orderSummary}\n` : '') +
+            `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `Jika kamu membutuhkan bantuan atau ingin memesan kembali, silakan buka tiket baru di **MoonBlox**. Terimakasih! 🌙✨`
+          )
+          .setFooter({ text: 'MoonBlox • Order Cancelled' })
+          .setTimestamp();
+
+        await customer.send({ embeds: [cancelDmEmbed] }).catch(err => {
+          console.warn(`[handlePaymentCancel] Failed to DM ${customer.tag} (${customer.id}):`, err.message || err);
+        });
+      }
+    } catch (dmErr) {
+      console.error('[handlePaymentCancel DM Error]', dmErr);
+    }
+  }
+
+  // Notify channel and execute complete ticket closure (generate transcript, log, and delete channel)
+  const { executeCloseTicket } = require('./closeTicket');
+  await executeCloseTicket({
+    channel,
+    guild,
+    closedByUser: interaction.user,
+    reason: `Payment cancelled by ${interaction.user.tag}`,
+    client: interaction.client,
+    isCancelled: true,
+  });
+}
+
 module.exports = {
   sendPaymentInstructions,
   handlePaymentDone,
   handlePaymentVerify,
   handleOrderDone,
+  handlePaymentCancel,
 };
