@@ -210,7 +210,10 @@ if (interaction.commandName === 'delete' || interaction.commandName === 'insert'
             base = gameData[category];
           }
 
-          const enabled = await getEnabledItems(game, category);
+          const [enabled, disabled] = await Promise.all([
+            getEnabledItems(game, category),
+            getDisabledItems(game, category),
+          ]);
 
           const enabledFormatted = enabled.map(i => ({
             label: i.label,
@@ -218,8 +221,6 @@ if (interaction.commandName === 'delete' || interaction.commandName === 'insert'
           }));
 
           const merged = [...base, ...enabledFormatted];
-
-          const disabled = await getDisabledItems(game, category);
 
           const results = merged
             .filter(i => !disabled.includes(i.value))

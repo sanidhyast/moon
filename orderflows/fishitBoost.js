@@ -34,8 +34,10 @@ async function loadItems(category){
       ? items.fishitBoost.giftPackages
       : items.fishitBoost.loginPackages;
 
-  const enabledRaw = await getEnabledItems('fishitBoost', c);
-  const disabledRaw = await getDisabledItems('fishitBoost', c);
+  const [enabledRaw, disabledRaw] = await Promise.all([
+    getEnabledItems('fishitBoost', c),
+    getDisabledItems('fishitBoost', c),
+  ]);
 
   // normalize disabled
   const disabledSet = new Set(
@@ -82,8 +84,10 @@ async function showPriceList(interaction) {
 
   const banner = new AttachmentBuilder('./pricing.png',{name:'pricing.png'});
 
-  const gift = await loadItems('gift');
-  const login = await loadItems('login');
+  const [gift, login] = await Promise.all([
+    loadItems('gift'),
+    loadItems('login'),
+  ]);
 
   const giftText = gift.map(i => i.label).join('\n') || '*Unavailable*';
   const loginText = login.map(i => i.label).join('\n') || '*Unavailable*';

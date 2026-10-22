@@ -31,8 +31,10 @@ async function loadItems(category){
 
   const base = items.forge[c] ?? [];
 
-  const enabledRaw = await getEnabledItems('forge', c);
-  const disabledRaw = await getDisabledItems('forge', c);
+  const [enabledRaw, disabledRaw] = await Promise.all([
+    getEnabledItems('forge', c),
+    getDisabledItems('forge', c),
+  ]);
 
   // 🔥 normalize disabled
   const disabledSet = new Set(
@@ -77,10 +79,12 @@ async function showPriceList(interaction){
 
   const banner = new AttachmentBuilder('./pricing.png',{name:'pricing.png'});
 
-  const gamepass = await loadItems('gamepass');
-  const totems   = await loadItems('totems');
-  const rerolls  = await loadItems('rerolls');
-  const cashpack = await loadItems('cashpack');
+  const [gamepass, totems, rerolls, cashpack] = await Promise.all([
+    loadItems('gamepass'),
+    loadItems('totems'),
+    loadItems('rerolls'),
+    loadItems('cashpack'),
+  ]);
 
   const embed = new EmbedBuilder()
     .setTitle('⛏️ The Forge')

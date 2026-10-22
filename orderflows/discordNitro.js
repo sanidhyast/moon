@@ -21,8 +21,10 @@ async function loadItems(category) {
 
   const base = items[g]?.[c] ?? [];
 
-  const disabledRaw = await getDisabledItems(g, c);
-  const enabledRaw  = await getEnabledItems(g, c);
+  const [disabledRaw, enabledRaw] = await Promise.all([
+    getDisabledItems(g, c),
+    getEnabledItems(g, c),
+  ]);
 
   const disabledSet = new Set(disabledRaw.map(v => v.toLowerCase().trim()));
 
@@ -47,11 +49,13 @@ async function showPriceList(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
   const banner     = new AttachmentBuilder('./pricing.png', { name: 'pricing.png' });
-  const nitro      = await loadItems('nitro_boost');
-  const sb1mo      = await loadItems('server_boost_1mo');
-  const sb3mo      = await loadItems('server_boost_3mo');
-  const decoration = await loadItems('decoration');
-  const accountSale = await loadItems('account_sale');
+  const [nitro, sb1mo, sb3mo, decoration, accountSale] = await Promise.all([
+    loadItems('nitro_boost'),
+    loadItems('server_boost_1mo'),
+    loadItems('server_boost_3mo'),
+    loadItems('decoration'),
+    loadItems('account_sale'),
+  ]);
 
   const embed = new EmbedBuilder()
     .setTitle('💜 Discord Services – Price List')

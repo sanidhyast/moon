@@ -157,19 +157,23 @@ async function createTicket(interaction, { orderType, categoryKey, summaryText, 
     });
   }
 
-  try {
-    await createTicketRecord({
-      ticketId,
-      channelId: channel.id,
-      userId: user.id,
-      username: user.username,
-      orderType,
-      summary: summaryText,
-      openedAt,
-    });
-  } catch (error) {
+  // 🚀 Fast response to customer immediately upon channel creation!
+  await interaction.editReply({
+    content: `✅ Ticket created → ${channel}`,
+  }).catch(() => {});
+
+  // Save ticket record to database asynchronously
+  createTicketRecord({
+    ticketId,
+    channelId: channel.id,
+    userId: user.id,
+    username: user.username,
+    orderType,
+    summary: summaryText,
+    openedAt,
+  }).catch(error => {
     console.error('[Supabase error]:', error);
-  }
+  });
 
   const welcomeEmbed = new EmbedBuilder()
     .setTitle('🎫 MoonBlox - Tiket Dibuka')
@@ -242,10 +246,6 @@ async function createTicket(interaction, { orderType, categoryKey, summaryText, 
   } catch (error) {
     console.error('[DM ERROR]:', error);
   }
-
-  await interaction.editReply({
-    content: `✅ Ticket created → ${channel}`,
-  });
 }
 
 module.exports = { createTicket };

@@ -21,8 +21,10 @@ async function loadItems(category) {
 
   const base = items[g]?.[c] ?? [];
 
-  const disabledRaw = await getDisabledItems(g, c);
-  const enabledRaw  = await getEnabledItems(g, c);
+  const [disabledRaw, enabledRaw] = await Promise.all([
+    getDisabledItems(g, c),
+    getEnabledItems(g, c),
+  ]);
 
   const disabledSet = new Set(disabledRaw.map(v => v.toLowerCase().trim()));
 
@@ -47,9 +49,11 @@ async function showPriceList(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
   const banner   = new AttachmentBuilder('./pricing.png', { name: 'pricing.png' });
-  const boosts   = await loadItems('boost');
-  const gamepass = await loadItems('gamepass');
-  const cashpack = await loadItems('cashpack');
+  const [boosts, gamepass, cashpack] = await Promise.all([
+    loadItems('boost'),
+    loadItems('gamepass'),
+    loadItems('cashpack'),
+  ]);
 
   const embed = new EmbedBuilder()
     .setTitle('🍀 Kick a Lucky Block – Price List')

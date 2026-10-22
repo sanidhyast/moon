@@ -31,8 +31,10 @@ async function loadItems(category) {
 
   const base = items.sawahIndo[c] ?? [];
 
-  const enabledRaw = await getEnabledItems('sawahIndo', c);
-  const disabledRaw = await getDisabledItems('sawahIndo', c);
+  const [enabledRaw, disabledRaw] = await Promise.all([
+    getEnabledItems('sawahIndo', c),
+    getDisabledItems('sawahIndo', c),
+  ]);
 
   // 🔥 normalize disabled
   const disabledSet = new Set(
@@ -77,8 +79,10 @@ async function showPriceList(interaction) {
 
   const banner = new AttachmentBuilder('./pricing.png', { name: 'pricing.png' });
 
-  const gamepass = await loadItems('gamepass');
-  const fiture = await loadItems('fiture');
+  const [gamepass, fiture] = await Promise.all([
+    loadItems('gamepass'),
+    loadItems('fiture'),
+  ]);
 
   const embed = new EmbedBuilder()
     .setTitle('🌾 Sawah Indo')

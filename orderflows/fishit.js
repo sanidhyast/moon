@@ -25,8 +25,10 @@ async function loadItems(game, category) {
 
   const base = items[g]?.[c] ?? [];
 
-  const disabledRaw = await getDisabledItems(g, c);
-  const enabledRaw = await getEnabledItems(g, c);
+  const [disabledRaw, enabledRaw] = await Promise.all([
+    getDisabledItems(g, c),
+    getEnabledItems(g, c),
+  ]);
 
   const disabledSet = new Set(
     disabledRaw.map(v => v.toLowerCase().trim())
@@ -58,8 +60,10 @@ async function showPriceList(interaction) {
 
   const banner = new AttachmentBuilder('./pricing.png', { name: 'pricing.png' });
 
-  const gamepass = await loadItems('fishit', 'gamepass');
-  const crates = await loadItems('fishit', 'crate');
+  const [gamepass, crates] = await Promise.all([
+    loadItems('fishit', 'gamepass'),
+    loadItems('fishit', 'crate'),
+  ]);
 
   const embed = new EmbedBuilder()
     .setTitle('🐟Fish it - Price List')

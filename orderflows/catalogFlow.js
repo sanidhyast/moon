@@ -50,8 +50,10 @@ function createCatalogFlow({
     const normalizedCategory = category.toLowerCase().trim();
     const base = getData()[normalizedCategory] ?? [];
 
-    const disabledRaw = await getDisabledItems(game, normalizedCategory);
-    const enabledRaw = await getEnabledItems(game, normalizedCategory);
+    const [disabledRaw, enabledRaw] = await Promise.all([
+      getDisabledItems(game, normalizedCategory),
+      getEnabledItems(game, normalizedCategory),
+    ]);
 
     const disabledSet = new Set(
       disabledRaw.map(value => value.toLowerCase().trim())
@@ -76,15 +78,14 @@ function createCatalogFlow({
     await interaction.deferReply({ ephemeral: true });
 
     const banner = new AttachmentBuilder('./pricing.png', { name: 'pricing.png' });
-    const sections = [];
+    const categories = getCategories();
 
-    for (const category of getCategories()) {
-      const categoryItems = await loadCategoryItems(category.value);
-
-      sections.push(
-        `**${category.label}**\n${categoryItems.map(item => item.label).join('\n') || '*Currently unavailable*'}`
-      );
-    }
+    const sections = await Promise.all(
+      categories.map(async category => {
+        const categoryItems = await loadCategoryItems(category.value);
+        return `**${category.label}**\n${categoryItems.map(item => item.label).join('\n') || '*Currently unavailable*'}`;
+      })
+    );
 
     const embed = new EmbedBuilder()
       .setTitle(priceListTitle)

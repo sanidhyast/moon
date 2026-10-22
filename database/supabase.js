@@ -9,33 +9,73 @@ const supabase = createClient(
 // 🔥 normalize helper
 const norm = (v) => v?.toString().toLowerCase().trim();
 
+// 🚀 IN-MEMORY CACHE FOR HIGH-SPEED BOT WORKFLOWS
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+const cache = {
+  disabledItems: new Map(), // key: 'game' -> { data, timestamp }
+  enabledItems: new Map(),  // key: 'game:category' -> { data, timestamp }
+  disabledButtons: null,    // { data, timestamp }
+  removedButtons: null,     // { data, timestamp }
+};
+
+function clearItemCache(game) {
+  if (game) {
+    const g = norm(game);
+    cache.disabledItems.delete(g);
+    for (const key of cache.enabledItems.keys()) {
+      if (key.startsWith(`${g}:`)) {
+        cache.enabledItems.delete(key);
+      }
+    }
+  } else {
+    cache.disabledItems.clear();
+    cache.enabledItems.clear();
+  }
+}
+
+function clearButtonCache() {
+  cache.disabledButtons = null;
+  cache.removedButtons = null;
+}
+
 /* ─────────────────────────────
    DISABLED ITEMS
 ──────────────────────────── */
 
 async function getDisabledItems(game, category = null) {
-
   const g = norm(game);
   const c = category ? norm(category) : null;
+  const now = Date.now();
 
-  const { data, error } = await supabase
-    .from('disabled_items')
-    .select('item, category')
-    .eq('game', g);
+  const cached = cache.disabledItems.get(g);
+  let rawData;
 
-  if (error) {
-    console.error('[Supabase] getDisabledItems error:', error.message);
-    return [];
+  if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+    rawData = cached.data;
+  } else {
+    const { data, error } = await supabase
+      .from('disabled_items')
+      .select('item, category')
+      .eq('game', g);
+
+    if (error) {
+      console.error('[Supabase] getDisabledItems error:', error.message);
+      return cached ? cached.data.filter(r => !c || norm(r.category) === c).map(r => norm(r.item)) : [];
+    }
+
+    rawData = data || [];
+    cache.disabledItems.set(g, { data: rawData, timestamp: now });
   }
 
   // 🔥 filter in JS instead (safe)
-  return data
+  return rawData
     .filter(r => !c || norm(r.category) === c)
     .map(r => norm(r.item));
 }
 
 async function disableItem(game, category, item) {
-
+  clearItemCache(game);
   const g = norm(game);
   const c = norm(category);
   const v = norm(item);
@@ -56,7 +96,7 @@ async function disableItem(game, category, item) {
 }
 
 async function enableItem(game, category, item) {
-
+  clearItemCache(game);
   const g = norm(game);
   const c = norm(category);
   const v = norm(item);
@@ -81,9 +121,15 @@ async function enableItem(game, category, item) {
 ──────────────────────────── */
 
 async function getEnabledItems(game, category) {
-
   const g = norm(game);
   const c = norm(category);
+  const cacheKey = `${g}:${c}`;
+  const now = Date.now();
+
+  const cached = cache.enabledItems.get(cacheKey);
+  if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+    return cached.data;
+  }
 
   const { data, error } = await supabase
     .from('enabled_items')
@@ -94,18 +140,21 @@ async function getEnabledItems(game, category) {
 
   if (error) {
     console.error('[Supabase] getEnabledItems error:', error.message);
-    return [];
+    return cached ? cached.data : [];
   }
 
-  return data.map(i => ({
+  const mapped = (data || []).map(i => ({
     label: i.label,
     value: norm(i.value),
     position: i.position // ✅ keep position
   }));
+
+  cache.enabledItems.set(cacheKey, { data: mapped, timestamp: now });
+  return mapped;
 }
 
 async function addEnabledItem(game, category, label, value, position) {
-
+  clearItemCache(game);
   const g = norm(game);
   const c = norm(category);
   const v = norm(value);
@@ -130,20 +179,29 @@ async function addEnabledItem(game, category, label, value, position) {
     throw error;
   }
 }
+
 async function getRemovedButtons() {
+  const now = Date.now();
+  if (cache.removedButtons && (now - cache.removedButtons.timestamp < CACHE_TTL_MS)) {
+    return cache.removedButtons.data;
+  }
+
   const { data, error } = await supabase
     .from('removed_buttons')
     .select('button');
 
   if (error) {
     console.error('[Supabase] getRemovedButtons error:', error.message);
-    return [];
+    return cache.removedButtons ? cache.removedButtons.data : [];
   }
 
-  return data.map(r => r.button.toLowerCase().trim());
+  const mapped = (data || []).map(r => r.button.toLowerCase().trim());
+  cache.removedButtons = { data: mapped, timestamp: now };
+  return mapped;
 }
 
 async function removeButtonFully(button) {
+  clearButtonCache();
   const { error } = await supabase
     .from('removed_buttons')
     .upsert({ button: button.toLowerCase().trim() });
@@ -157,6 +215,7 @@ async function removeButtonFully(button) {
 }
 
 async function insertButtonFully(button) {
+  clearButtonCache();
   const { error } = await supabase
     .from('removed_buttons')
     .delete()
@@ -217,19 +276,27 @@ async function closeTicketRecord(channelId) {
 ──────────────────────────── */
 
 async function getDisabledButtons() {
+  const now = Date.now();
+  if (cache.disabledButtons && (now - cache.disabledButtons.timestamp < CACHE_TTL_MS)) {
+    return cache.disabledButtons.data;
+  }
+
   const { data, error } = await supabase
     .from('disabled_buttons')
     .select('button');
 
   if (error) {
     console.error('[Supabase] getDisabledButtons error:', error.message);
-    return [];
+    return cache.disabledButtons ? cache.disabledButtons.data : [];
   }
 
-  return data.map(r => r.button.toLowerCase().trim());
+  const mapped = (data || []).map(r => r.button.toLowerCase().trim());
+  cache.disabledButtons = { data: mapped, timestamp: now };
+  return mapped;
 }
 
 async function disableButton(button) {
+  clearButtonCache();
   const { error } = await supabase
     .from('disabled_buttons')
     .upsert({ button: button.toLowerCase().trim() });
@@ -243,6 +310,7 @@ async function disableButton(button) {
 }
 
 async function enableButton(button) {
+  clearButtonCache();
   const { error } = await supabase
     .from('disabled_buttons')
     .delete()
@@ -270,5 +338,7 @@ module.exports = {
   enableButton,
   getRemovedButtons,
   removeButtonFully,
-  insertButtonFully
+  insertButtonFully,
+  clearItemCache,
+  clearButtonCache,
 };

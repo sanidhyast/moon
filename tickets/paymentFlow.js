@@ -58,16 +58,16 @@ Dana - 085283960141 AN Yani M.
 **FEE QRIS WAJIB DI BAYAR**`
     );
 
-  await channel.send({ embeds: [paymentEmbed] });
-
   const qrPath = getPaymentQrPath();
+  const hasQr = fs.existsSync(qrPath);
 
-  if (fs.existsSync(qrPath)) {
+  if (hasQr) {
     await channel.send({
+      embeds: [paymentEmbed],
       files: [new AttachmentBuilder(qrPath)],
     });
   } else {
-    console.warn(`[paymentFlow] QR image not found at ${qrPath}`);
+    await channel.send({ embeds: [paymentEmbed] });
   }
 
   const paymentDoneRow = new ActionRowBuilder().addComponents(
